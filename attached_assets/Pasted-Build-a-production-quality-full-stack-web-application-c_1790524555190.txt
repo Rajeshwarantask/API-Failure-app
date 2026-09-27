@@ -1,0 +1,304 @@
+Build a production-quality full-stack web application called **API Failure Simulator**.
+
+### Product Goal
+
+API Failure Simulator is a developer tool that allows developers to test how their applications behave when an external API fails or behaves unexpectedly.
+
+The platform acts as a controlled intermediary/proxy between the developer's application and an external API.
+
+Instead of always forwarding a normal successful request, the developer can configure the simulator to deliberately introduce realistic failures such as:
+
+* HTTP 400
+* HTTP 401
+* HTTP 403
+* HTTP 404
+* HTTP 429 Rate Limit
+* HTTP 500
+* HTTP 502
+* HTTP 503
+* Network timeout
+* Artificial latency
+* Connection failure
+* Malformed JSON
+* Empty response
+* Duplicate response
+
+The purpose is to let developers verify whether their applications correctly handle retries, timeouts, errors, duplicate requests, and service recovery before encountering these situations in production.
+
+### Core User Flow
+
+A developer should be able to:
+
+1. Create a new API simulation.
+2. Enter the target external API URL.
+3. Configure HTTP method, headers, query parameters, and request body.
+4. Configure the failure behavior.
+5. Generate/use a simulator endpoint.
+6. Send requests from their own application through that simulator endpoint.
+7. Have the simulator intercept the request.
+8. Apply the configured failure behavior.
+9. Optionally forward the request to the real external API.
+10. Record the complete execution.
+11. Inspect the request, simulated response, latency, failure type, and execution timeline.
+12. Replay previous requests with the same or different failure configuration.
+
+### Example
+
+Suppose the developer's application normally calls:
+
+`https://payment-api.example.com/pay`
+
+The simulator provides a controlled endpoint such as:
+
+`https://simulator.example.com/api/simulations/payment-test`
+
+The developer changes their application to call the simulator endpoint.
+
+The simulator can then be configured:
+
+```text
+Failure: HTTP 500
+Delay: 2 seconds
+Forward request: Yes
+```
+
+When the application sends a payment request:
+
+```text
+Application
+    ↓
+API Failure Simulator
+    ↓
+Inject 500 failure
+    ↓
+Application receives 500
+```
+
+The simulator records exactly what happened.
+
+### Main Application Pages
+
+Create a polished developer-focused interface with these pages:
+
+#### 1. Dashboard
+
+Show:
+
+* Total simulations
+* Requests executed
+* Failed requests
+* Successful requests
+* Active simulations
+* Recent test runs
+
+Also show a list of recent simulations.
+
+#### 2. Simulations
+
+List all simulations.
+
+Each simulation should show:
+
+* Name
+* Target API
+* HTTP method
+* Current failure scenario
+* Number of requests
+* Last executed
+* Status
+
+Actions:
+
+* Open
+* Edit
+* Run
+* Replay
+* Delete
+
+#### 3. Create Simulation
+
+Provide a clean configuration interface.
+
+Sections:
+
+**Basic Information**
+
+* Simulation name
+* Description
+* Target API URL
+
+**Request Configuration**
+
+* HTTP method
+* Headers
+* Query parameters
+* Request body
+
+**Failure Injection**
+
+* Failure type
+* HTTP status code
+* Response body
+* Artificial latency
+* Timeout duration
+* Failure probability
+
+**Forwarding**
+
+* Forward request to real API: On/Off
+* Forward timeout
+* Preserve headers
+
+Include a generated simulator endpoint that the developer can copy.
+
+#### 4. Simulation Details
+
+Show:
+
+* Simulation configuration
+* Generated endpoint
+* Target endpoint
+* Current failure rules
+* Request statistics
+* Recent executions
+
+Provide clear controls to enable/disable failure injection.
+
+#### 5. Execution / Request Inspector
+
+This is one of the most important screens.
+
+For each request show:
+
+```text
+Request
+Method
+URL
+Headers
+Query parameters
+Request body
+
+↓
+
+Simulator
+Failure rule
+Artificial delay
+Forwarding decision
+
+↓
+
+Response
+HTTP status
+Response headers
+Response body
+Actual latency
+
+↓
+
+Execution timeline
+Request received
+Failure injected
+Response generated
+Request completed
+```
+
+Allow users to expand/collapse JSON objects and copy request/response data.
+
+#### 6. Replay
+
+Allow the developer to select a previous execution and replay it.
+
+They should be able to change:
+
+* Failure type
+* Status code
+* Delay
+* Response body
+
+Then execute the same request again.
+
+### Scenario System
+
+Design the architecture so that a simulation can eventually contain multiple failure scenarios.
+
+For example:
+
+```text
+Scenario: Payment API Failure Test
+
+Request 1 → Success
+Request 2 → 500
+Request 3 → Timeout
+Request 4 → 429
+Request 5 → Success
+```
+
+For the initial version, implement single active failure configuration per simulation, but structure the UI and data model so multi-step scenarios can be added later.
+
+### UI/UX
+
+The interface should look like a serious developer tool rather than a generic SaaS dashboard.
+
+Design direction:
+
+* Dark developer-tool aesthetic
+* Clean typography
+* Compact but readable layouts
+* Professional spacing
+* Code-editor-inspired components
+* JSON viewers
+* HTTP status badges
+* Request/response panels
+* Timeline visualization
+* Clear success/error states
+* Keyboard-friendly interactions
+* Responsive desktop-first design
+
+Avoid:
+
+* Generic colorful SaaS gradients
+* Excessive cards
+* Fake analytics
+* Unnecessary charts
+* Marketing-style landing-page sections inside the application
+* Generic CRUD-dashboard appearance
+
+The application should feel closer to a professional API/developer platform.
+
+### Technical Direction
+
+Use:
+
+* Next.js
+* TypeScript
+* React
+* Tailwind CSS
+* shadcn/ui
+
+Structure the application so the frontend and backend/API layer are clearly separated.
+
+Use realistic mock data initially where an actual external API connection is not yet implemented, but structure the code so the simulator/proxy backend can later perform real HTTP forwarding and failure injection.
+
+Do NOT create a fake product where buttons only change frontend state.
+
+The architecture should prepare for real functionality involving:
+
+* HTTP proxying
+* Request interception
+* Failure injection
+* Timeouts
+* Artificial latency
+* Request logging
+* Replay
+* API authentication
+* Rate limiting
+
+### Important
+
+This is a real developer product, not a college CRUD project.
+
+The core value of the application is the **API simulation/proxy engine**, not the dashboard.
+
+Prioritize the simulation workflow and request inspector over decorative UI.
+
+Build the first version with clean reusable components and a scalable architecture so the backend simulation engine can be implemented properly afterward.
