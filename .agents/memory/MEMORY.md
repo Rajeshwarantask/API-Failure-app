@@ -1,0 +1,1 @@
+- [Generated client typing](generated-client-typing.md) — the shared API client compiler needs DOM iterable types when generated fetch code uses Headers.entries().
