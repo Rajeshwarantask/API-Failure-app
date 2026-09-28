@@ -1,0 +1,20 @@
+{
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "artifacts/api-failure-simulator/dist/public",
+  "installCommand": "pnpm install",
+  "functions": {
+    "api/**/*.ts": {
+      "runtime": "nodejs22.x"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
