@@ -73,7 +73,7 @@ await mkdir(outputDir, {
 });
 
 await rename(
-  path.join(tempDir, "index-vercel.mjs"),
+  path.join(tempDir, "index-vercel.js"),
   path.join(outputDir, "index.mjs")
 );
 
