@@ -1,0 +1,6 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @workspace/api-failure-simulator build",
+  "outputDirectory": "artifacts/api-failure-simulator/dist/public",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
