@@ -221,7 +221,14 @@ function ExecutionRow({ execution, compact = false }: { execution: any; compact?
 }
 
 function Simulations() {
-  const { data = [], isLoading, isError, error, refetch } = useListSimulations({ query: { queryKey: getListSimulationsQueryKey() } });
+  const { data, isLoading, isError, error, refetch } = useListSimulations({ query: { queryKey: getListSimulationsQueryKey() } });
+  const simulations = Array.isArray(data)
+    ? data
+    : Array.isArray((data as any)?.data)
+      ? (data as any).data
+      : Array.isArray((data as any)?.simulations)
+        ? (data as any).simulations
+        : [];
   const del = useDeleteSimulation();
   const run = useRunSimulation();
   const [, setLocation] = useLocation();
