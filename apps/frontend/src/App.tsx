@@ -200,8 +200,15 @@ function Stat({ label, value, detail, tone = 'default', icon: Icon }: { label: s
 
 function Dashboard() {
   const { data, isLoading, isError, error, refetch } = useGetDashboardSummary({ query: { queryKey: getGetDashboardSummaryQueryKey() } });
-  const { data: simulations = [] } = useListSimulations({ query: { queryKey: getListSimulationsQueryKey() } });
-  const runs = data?.recentRuns ?? [];
+  const { data: simulationData } = useListSimulations({ query: { queryKey: getListSimulationsQueryKey() } });
+  const simulations = Array.isArray(simulationData)
+    ? simulationData
+    : Array.isArray((simulationData as any)?.data)
+      ? (simulationData as any).data
+      : Array.isArray((simulationData as any)?.simulations)
+        ? (simulationData as any).simulations
+        : [];
+  const runs = Array.isArray(data?.recentRuns) ? data.recentRuns : [];
   return <><PageHeading breadcrumbs={[{ label: 'Workspace' }, { label: 'Overview' }]} title="Break it. Observe recovery." description="Inject controlled faults into known request paths, then inspect what your software actually does under pressure." actions={<Link href="/simulations/new" data-testid="link-create-simulation" className="inline-flex items-center gap-2 rounded-md border border-primary bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/85"><Plus size={15} /> New simulation</Link>} />
     {isLoading ? <LoadingBlocks /> : isError ? <QueryError message={errorText(error)} retry={() => refetch()} /> : <div className="space-y-6">
        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr_1fr]"><Stat label="Total simulations" value={formatNumber(data?.totalSimulations)} detail={`${data?.activeSimulations ?? 0} enabled now`} icon={SlidersHorizontal} /><Stat label="Requests executed" value={formatNumber(data?.requestsExecuted)} detail="across all scenarios" tone="teal" icon={Zap} /><Stat label="Failed requests" value={formatNumber(data?.failedRequests)} detail={`${pct(data?.failedRequests ?? 0, data?.requestsExecuted ?? 0)} of traffic`} tone="red" icon={ShieldAlert} /><Stat label="Successful requests" value={formatNumber(data?.successfulRequests)} detail="returned without injection" tone="teal" icon={Check} /></div>
