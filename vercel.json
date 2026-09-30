@@ -1,0 +1,10 @@
+{
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm --filter @workspace/frontend build",
+  "outputDirectory": "apps/frontend/dist",
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs22.x"
+    }
+  }
+}
