@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { TimelineEventTone } from './timelineEventTone';
+import type { TimelineEventTone } from './timelineEventTone.js';
 
 export interface TimelineEvent {
   label: string;

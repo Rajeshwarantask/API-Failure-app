@@ -6,18 +6,18 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export * from './dashboardSummary';
-export * from './execution';
-export * from './executionStatus';
-export * from './failureType';
-export * from './healthStatus';
-export * from './httpMethod';
-export * from './keyValueMap';
-export * from './replayInput';
-export * from './runSimulationInput';
-export * from './simulation';
-export * from './simulationDetail';
-export * from './simulationInput';
-export * from './simulationUpdate';
-export * from './timelineEvent';
-export * from './timelineEventTone';
+export * from './dashboardSummary.js';
+export * from './execution.js';
+export * from './executionStatus.js';
+export * from './failureType.js';
+export * from './healthStatus.js';
+export * from './httpMethod.js';
+export * from './keyValueMap.js';
+export * from './replayInput.js';
+export * from './runSimulationInput.js';
+export * from './simulation.js';
+export * from './simulationDetail.js';
+export * from './simulationInput.js';
+export * from './simulationUpdate.js';
+export * from './timelineEvent.js';
+export * from './timelineEventTone.js';

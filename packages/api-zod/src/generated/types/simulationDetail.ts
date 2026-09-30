@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { Execution } from './execution';
-import type { Simulation } from './simulation';
+import type { Execution } from './execution.js';
+import type { Simulation } from './simulation.js';
 
 export type SimulationDetail = Simulation & {
   executions: Execution[];

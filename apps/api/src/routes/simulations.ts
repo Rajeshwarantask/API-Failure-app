@@ -1,7 +1,7 @@
 // The API and database packages resolve separate Drizzle type copies during Vercel's workspace check.
 // Runtime behavior is unchanged; the API package owns the validated query boundary.
 // @ts-nocheck
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db, executionsTable, simulationsTable } from "@workspace/db";
 import {
@@ -268,7 +268,7 @@ async function getExecution(id: number) {
   return execution;
 }
 
-router.get("/dashboard", async (_req: unknown, res: { json: (body: unknown) => void }): Promise<void> => {
+router.get("/dashboard", async (_req: Request, res: Response): Promise<void> => {
   await seedIfEmpty();
   const simulations = await db.select().from(simulationsTable);
   const recent = await db.select().from(executionsTable).orderBy((desc as any)(executionsTable.createdAt)).limit(8);

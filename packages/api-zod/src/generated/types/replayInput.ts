@@ -5,6 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { RunSimulationInput } from './runSimulationInput';
+import type { RunSimulationInput } from './runSimulationInput.js';
 
 export type ReplayInput = RunSimulationInput;

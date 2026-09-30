@@ -5,9 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { FailureType } from './failureType';
-import type { HttpMethod } from './httpMethod';
-import type { KeyValueMap } from './keyValueMap';
+import type { FailureType } from './failureType.js';
+import type { HttpMethod } from './httpMethod.js';
+import type { KeyValueMap } from './keyValueMap.js';
 
 export interface SimulationUpdate {
   /** @minLength 1 */
