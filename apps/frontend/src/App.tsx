@@ -242,7 +242,7 @@ function Simulations() {
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const filtered = useMemo(() => data.filter(sim => `${sim.name} ${sim.targetUrl} ${sim.failureType}`.toLowerCase().includes(search.toLowerCase())), [data, search]);
+  const filtered = useMemo(() => simulations.filter(sim => `${sim.name} ${sim.targetUrl} ${sim.failureType}`.toLowerCase().includes(search.toLowerCase())), [simulations, search]);
   const remove = () => { if (!deleteTarget) return; del.mutate({ id: deleteTarget.id }, { onSuccess: () => { setNotice('Simulation deleted'); setDeleteTarget(null); queryClient.invalidateQueries({ queryKey: getListSimulationsQueryKey() }); } }); };
   const execute = (id: number, replay = false) => run.mutate({ id, data: undefined }, { onSuccess: (execution) => { setNotice(`Run #${execution.id} completed`); queryClient.invalidateQueries({ queryKey: getListSimulationsQueryKey() }); if (replay) setLocation(`/executions/${execution.id}/replay`); } });
   return <><PageHeading breadcrumbs={[{ label: 'Workspace' }, { label: 'Simulations', href: '/simulations' }]} title="Failure scenarios" description="Configure repeatable failure behavior and run it against a known request shape." actions={<Link href="/simulations/new" data-testid="link-new-simulation" className="inline-flex items-center gap-2 rounded-md border border-primary bg-primary px-4 py-2.5 text-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary/85"><Plus size={15} /> New simulation</Link>} />
