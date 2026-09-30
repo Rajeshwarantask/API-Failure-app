@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { Execution } from './execution';
+import type { Execution } from './execution.js';
 
 export interface DashboardSummary {
   totalSimulations: number;

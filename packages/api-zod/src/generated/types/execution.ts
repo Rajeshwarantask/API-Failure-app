@@ -5,11 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { ExecutionStatus } from './executionStatus';
-import type { FailureType } from './failureType';
-import type { HttpMethod } from './httpMethod';
-import type { KeyValueMap } from './keyValueMap';
-import type { TimelineEvent } from './timelineEvent';
+import type { ExecutionStatus } from './executionStatus.js';
+import type { FailureType } from './failureType.js';
+import type { HttpMethod } from './httpMethod.js';
+import type { KeyValueMap } from './keyValueMap.js';
+import type { TimelineEvent } from './timelineEvent.js';
 
 export interface Execution {
   id: number;

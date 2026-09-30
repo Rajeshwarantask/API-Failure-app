@@ -5,7 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { FailureType } from './failureType';
+import type { FailureType } from './failureType.js';
 
 export interface RunSimulationInput {
   failureType?: FailureType;
