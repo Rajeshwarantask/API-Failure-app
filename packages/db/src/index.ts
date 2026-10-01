@@ -13,15 +13,19 @@ if (!connectionString) {
   );
 }
 
-const dbUrl = new URL(connectionString);
-dbUrl.searchParams.delete("sslmode");
+const url = new URL(connectionString);
 
 export const pool = new Pool({
-  connectionString: dbUrl.toString(),
+  host: url.hostname,
+  port: Number(url.port || 5432),
+  user: decodeURIComponent(url.username),
+  password: decodeURIComponent(url.password),
+  database: url.pathname.slice(1),
   ssl: {
     rejectUnauthorized: false,
   },
 });
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema/index.js";
