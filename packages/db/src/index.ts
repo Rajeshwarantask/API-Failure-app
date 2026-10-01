@@ -13,8 +13,14 @@ if (!connectionString) {
   );
 }
 
+const url = new URL(connectionString);
+
 export const pool = new Pool({
-  connectionString,
+  host: url.hostname,
+  port: Number(url.port || 5432),
+  user: decodeURIComponent(url.username),
+  password: decodeURIComponent(url.password),
+  database: url.pathname.slice(1),
   ssl: {
     rejectUnauthorized: false,
   },
