@@ -9,6 +9,9 @@
       "import": "./dist/index.js"
     }
   },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
   "dependencies": {
     "zod": "catalog:"
   }
