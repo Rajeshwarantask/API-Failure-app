@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/api-client-react"
+    },
+    {
+      "path": "./packages/api-zod"
+    }
+  ]
+}

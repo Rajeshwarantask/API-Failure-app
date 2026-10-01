@@ -1,0 +1,434 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: simulations
+    description: API simulation configuration and execution operations
+  - name: dashboard
+    description: Dashboard summaries
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get simulator dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /simulations:
+    get:
+      operationId: listSimulations
+      tags: [simulations]
+      summary: List simulations
+      responses:
+        "200":
+          description: Simulations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Simulation"
+    post:
+      operationId: createSimulation
+      tags: [simulations]
+      summary: Create a simulation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationInput"
+      responses:
+        "201":
+          description: Created simulation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Simulation"
+  /simulations/{id}:
+    get:
+      operationId: getSimulation
+      tags: [simulations]
+      summary: Get a simulation and recent executions
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      responses:
+        "200":
+          description: Simulation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationDetail"
+        "404":
+          description: Simulation not found
+    patch:
+      operationId: updateSimulation
+      tags: [simulations]
+      summary: Update a simulation
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationUpdate"
+      responses:
+        "200":
+          description: Updated simulation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Simulation"
+        "404":
+          description: Simulation not found
+    delete:
+      operationId: deleteSimulation
+      tags: [simulations]
+      summary: Delete a simulation
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      responses:
+        "204":
+          description: Simulation deleted
+        "404":
+          description: Simulation not found
+  /simulations/{id}/executions:
+    get:
+      operationId: listExecutions
+      tags: [simulations]
+      summary: List simulation executions
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      responses:
+        "200":
+          description: Executions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Execution"
+    post:
+      operationId: runSimulation
+      tags: [simulations]
+      summary: Run a simulation
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunSimulationInput"
+      responses:
+        "201":
+          description: Simulation execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Execution"
+        "404":
+          description: Simulation not found
+  /executions/{id}:
+    get:
+      operationId: getExecution
+      tags: [simulations]
+      summary: Get an execution inspector payload
+      parameters:
+        - $ref: "#/components/parameters/ExecutionId"
+      responses:
+        "200":
+          description: Execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Execution"
+        "404":
+          description: Execution not found
+  /executions/{id}/replay:
+    post:
+      operationId: replayExecution
+      tags: [simulations]
+      summary: Replay an execution with optional overrides
+      parameters:
+        - $ref: "#/components/parameters/ExecutionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplayInput"
+      responses:
+        "201":
+          description: Replayed execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Execution"
+        "404":
+          description: Execution not found
+components:
+  parameters:
+    SimulationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    ExecutionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    HttpMethod:
+      type: string
+      enum: [GET, POST, PUT, PATCH, DELETE]
+    FailureType:
+      type: string
+      enum:
+        - none
+        - http_400
+        - http_401
+        - http_403
+        - http_404
+        - http_429
+        - http_500
+        - http_502
+        - http_503
+        - timeout
+        - latency
+        - connection_failure
+        - malformed_json
+        - empty_response
+        - duplicate_response
+    KeyValueMap:
+      type: object
+      additionalProperties:
+        type: string
+    TimelineEvent:
+      type: object
+      required: [label, timestamp, tone]
+      properties:
+        label:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        tone:
+          type: string
+          enum: [neutral, warning, danger, success]
+    Simulation:
+      type: object
+      required:
+        - id
+        - name
+        - targetUrl
+        - method
+        - headers
+        - queryParams
+        - failureType
+        - latencyMs
+        - timeoutMs
+        - probability
+        - forwardRequest
+        - forwardTimeoutMs
+        - preserveHeaders
+        - enabled
+        - requestCount
+        - failedCount
+        - successCount
+        - endpoint
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: ["string", "null"] }
+        targetUrl: { type: string, format: uri }
+        method:
+          $ref: "#/components/schemas/HttpMethod"
+        headers:
+          $ref: "#/components/schemas/KeyValueMap"
+        queryParams:
+          $ref: "#/components/schemas/KeyValueMap"
+        requestBody: { type: ["string", "null"] }
+        failureType:
+          $ref: "#/components/schemas/FailureType"
+        statusCode: { type: ["integer", "null"] }
+        responseBody: { type: ["string", "null"] }
+        latencyMs: { type: integer, minimum: 0 }
+        timeoutMs: { type: integer, minimum: 0 }
+        probability: { type: number, minimum: 0, maximum: 100 }
+        forwardRequest: { type: boolean }
+        forwardTimeoutMs: { type: integer, minimum: 0 }
+        preserveHeaders: { type: boolean }
+        enabled: { type: boolean }
+        requestCount: { type: integer, minimum: 0 }
+        failedCount: { type: integer, minimum: 0 }
+        successCount: { type: integer, minimum: 0 }
+        lastExecutedAt: { type: ["string", "null"], format: date-time }
+        endpoint: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SimulationInput:
+      type: object
+      required: [name, targetUrl, method]
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        targetUrl: { type: string, format: uri }
+        method:
+          $ref: "#/components/schemas/HttpMethod"
+        headers:
+          $ref: "#/components/schemas/KeyValueMap"
+        queryParams:
+          $ref: "#/components/schemas/KeyValueMap"
+        requestBody: { type: string }
+        failureType:
+          $ref: "#/components/schemas/FailureType"
+        statusCode: { type: integer, minimum: 100, maximum: 599 }
+        responseBody: { type: string }
+        latencyMs: { type: integer, minimum: 0, maximum: 120000 }
+        timeoutMs: { type: integer, minimum: 0, maximum: 120000 }
+        probability: { type: number, minimum: 0, maximum: 100 }
+        forwardRequest: { type: boolean }
+        forwardTimeoutMs: { type: integer, minimum: 0, maximum: 120000 }
+        preserveHeaders: { type: boolean }
+        enabled: { type: boolean }
+    SimulationUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        targetUrl: { type: string, format: uri }
+        method:
+          $ref: "#/components/schemas/HttpMethod"
+        headers:
+          $ref: "#/components/schemas/KeyValueMap"
+        queryParams:
+          $ref: "#/components/schemas/KeyValueMap"
+        requestBody: { type: string }
+        failureType:
+          $ref: "#/components/schemas/FailureType"
+        statusCode: { type: integer, minimum: 100, maximum: 599 }
+        responseBody: { type: string }
+        latencyMs: { type: integer, minimum: 0, maximum: 120000 }
+        timeoutMs: { type: integer, minimum: 0, maximum: 120000 }
+        probability: { type: number, minimum: 0, maximum: 100 }
+        forwardRequest: { type: boolean }
+        forwardTimeoutMs: { type: integer, minimum: 0, maximum: 120000 }
+        preserveHeaders: { type: boolean }
+        enabled: { type: boolean }
+    SimulationDetail:
+      allOf:
+        - $ref: "#/components/schemas/Simulation"
+        - type: object
+          required: [executions]
+          properties:
+            executions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Execution"
+    Execution:
+      type: object
+      required:
+        - id
+        - simulationId
+        - method
+        - url
+        - requestHeaders
+        - requestQuery
+        - failureType
+        - responseHeaders
+        - actualLatencyMs
+        - status
+        - timeline
+        - createdAt
+      properties:
+        id: { type: integer }
+        simulationId: { type: integer }
+        method:
+          $ref: "#/components/schemas/HttpMethod"
+        url: { type: string }
+        requestHeaders:
+          $ref: "#/components/schemas/KeyValueMap"
+        requestQuery:
+          $ref: "#/components/schemas/KeyValueMap"
+        requestBody: { type: ["string", "null"] }
+        failureType:
+          $ref: "#/components/schemas/FailureType"
+        simulatedStatus: { type: ["integer", "null"] }
+        responseHeaders:
+          $ref: "#/components/schemas/KeyValueMap"
+        responseBody: { type: ["string", "null"] }
+        actualLatencyMs: { type: integer, minimum: 0 }
+        status:
+          type: string
+          enum: [success, failure, timeout]
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/TimelineEvent"
+        createdAt: { type: string, format: date-time }
+    RunSimulationInput:
+      type: object
+      properties:
+        failureType:
+          $ref: "#/components/schemas/FailureType"
+        statusCode: { type: integer, minimum: 100, maximum: 599 }
+        latencyMs: { type: integer, minimum: 0, maximum: 120000 }
+        responseBody: { type: string }
+    ReplayInput:
+      $ref: "#/components/schemas/RunSimulationInput"
+    DashboardSummary:
+      type: object
+      required: [totalSimulations, activeSimulations, requestsExecuted, failedRequests, successfulRequests, recentRuns]
+      properties:
+        totalSimulations: { type: integer }
+        activeSimulations: { type: integer }
+        requestsExecuted: { type: integer }
+        failedRequests: { type: integer }
+        successfulRequests: { type: integer }
+        recentRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Execution"
+
