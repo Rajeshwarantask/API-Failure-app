@@ -1,5 +1,5 @@
-// The API bundle is generated during Vercel's build and has no source declaration file.
-// @ts-expect-error The generated ESM bundle is the deployed server entrypoint.
-import app from "../apps/api/dist/server.mjs";
+// The API bundle is generated during Vercel's build and has no declaration file.
+// @ts-expect-error Generated ESM bundle has no TypeScript declaration file.
+import app from "../apps/api/dist/app.mjs";
 
 export default app;
