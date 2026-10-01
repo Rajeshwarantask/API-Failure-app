@@ -219,7 +219,9 @@ async function executeSimulation(
     finalStatus = null;
     finalBody = null;
     actualLatencyMs = Math.max(0, simulation.timeoutMs ?? 0);
-  } else if (failureType === "none" && simulation.forwardRequest) {
+    await new Promise(resolve => setTimeout(resolve, actualLatencyMs));
+  } else if ((failureType === "none" || failureType === "latency") && simulation.forwardRequest) {
+    if (configuredLatency > 0) await new Promise(resolve => setTimeout(resolve, configuredLatency));
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
     try {
@@ -229,8 +231,8 @@ async function executeSimulation(
       actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
       responseHeaders = {};
       upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders) responseHeaders[key] = value; });
-    } catch {
-      status = "timeout";
+    } catch (error) {
+      status = error instanceof Error && error.name === "AbortError" ? "timeout" : "failure";
       finalStatus = null;
       finalBody = null;
       actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
