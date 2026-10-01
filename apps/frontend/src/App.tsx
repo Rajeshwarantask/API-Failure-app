@@ -116,10 +116,12 @@ function toForm(simulation: any): FormState {
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return <Link href="/" data-testid="link-home" className="group flex items-center gap-3">
-    <span className="relative flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-      <span className="absolute inset-1.5 rounded-lg border border-white/35" /><Radar size={17} strokeWidth={1.8} />
-    </span>
-    {!compact && <span><span className="block text-[13px] font-bold tracking-[.12em] text-sidebar-foreground">FAULTLINE</span><span className="text-[11px] text-sidebar-foreground/50">API workbench</span></span>}
+    <img
+      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/5359257c-41b5-4d69-a9ae-37b5d4ceb646-removebg-preview-qzgiEM7BLXo4YORLC3pQWrqJGuYpUf.png"
+      alt="FaultLine API logo"
+      className="size-9 rounded-xl object-cover shadow-sm"
+    />
+    {!compact && <span className="text-[13px] font-semibold tracking-[.08em] text-foreground">FaultLine API</span>}
   </Link>;
 }
 
