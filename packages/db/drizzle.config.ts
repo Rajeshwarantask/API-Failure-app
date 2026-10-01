@@ -8,10 +8,19 @@ if (!connectionString) {
   throw new Error("POSTGRES_URL or DATABASE_URL must be set");
 }
 
+const url = new URL(connectionString);
+
 export default defineConfig({
   schema: path.join(__dirname, "./src/schema/index.ts"),
   dialect: "postgresql",
   dbCredentials: {
-    url: connectionString,
+    host: url.hostname,
+    port: Number(url.port),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.slice(1),
+    ssl: {
+      rejectUnauthorized: false,
+    },
   },
 });
