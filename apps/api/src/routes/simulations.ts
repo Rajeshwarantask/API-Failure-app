@@ -193,68 +193,58 @@ async function executeSimulation(
   requestOverrides: RequestOverrides = {},
 ) {
   const startedAt = now();
-  const requestedFailure = overrides.failureType ?? (simulation.enabled ? (simulation.failureType as FailureType) : "none");
-  const probability = simulation.enabled ? simulation.probability : 0;
-  const shouldInject = requestedFailure !== "none" && probability > 0 && (probability >= 100 || Math.random() * 100 < probability);
-  const failureType: FailureType = shouldInject ? requestedFailure : "none";
+  const configuredFailure = (overrides.failureType ?? (simulation.enabled ? simulation.failureType : "none")) as FailureType;
+  const probability = Math.max(0, Math.min(100, simulation.enabled ? simulation.probability : 0));
+  const injected = configuredFailure !== "none" && (probability >= 100 || (probability > 0 && Math.random() * 100 < probability));
+  const failureType: FailureType = injected ? configuredFailure : "none";
   const method = requestOverrides.method ?? (simulation.method as HttpMethod);
   const requestHeaders = requestOverrides.headers ?? simulation.headers;
   const requestQuery = requestOverrides.queryParams ?? simulation.queryParams;
   const requestBody = requestOverrides.requestBody === undefined ? simulation.requestBody : requestOverrides.requestBody;
-  const statusCode = overrides.statusCode ?? simulation.statusCode ?? failureStatuses[failureType] ?? (failureType === "none" ? 200 : 503);
+  const statusCode = failureStatuses[failureType] ?? (failureType === "none" ? null : overrides.statusCode ?? simulation.statusCode ?? 503);
   const isTimeout = failureType === "timeout";
   const isFailure = failureType !== "none" && failureType !== "latency";
-  const actualLatencyMs = overrides.latencyMs ?? (isTimeout ? simulation.timeoutMs : simulation.latencyMs);
-  const responseBody =
-    overrides.responseBody ??
-    simulation.responseBody ??
-    (isTimeout
-      ? null
-      : failureType === "empty_response"
-        ? ""
-        : failureType === "malformed_json"
-          ? '{"error": "unterminated"'
-          : JSON.stringify(
-              failureType === "none"
-                ? { ok: true, forwarded: simulation.forwardRequest, target: simulation.targetUrl }
-                : { error: failureType, status: statusCode },
-              null,
-              2,
-            ));
-  const status = isTimeout ? "timeout" : isFailure ? "failure" : "success";
-  const timeline = createTimeline(failureType, startedAt);
+  const configuredLatency = Math.max(0, overrides.latencyMs ?? simulation.latencyMs ?? 0);
+  const responseBody = overrides.responseBody !== undefined ? overrides.responseBody : failureType === "empty_response" ? "" : failureType === "malformed_json" ? '{"error":"unterminated"' : failureType === "none" ? null : simulation.responseBody ?? JSON.stringify({ error: failureType, status: statusCode }, null, 2);
+  let responseHeaders: Record<string, string> = { "content-type": "application/json" };
+  let actualLatencyMs = configuredLatency;
+  let status: "success" | "failure" | "timeout" = isTimeout ? "timeout" : isFailure ? "failure" : "success";
+  let finalStatus = statusCode;
+  let finalBody = responseBody;
 
-  const [execution] = await db
-    .insert(executionsTable)
-    .values({
-      simulationId: simulation.id,
-      method,
-      url: buildUrl(simulation.targetUrl, requestQuery),
-      requestHeaders,
-      requestQuery,
-      requestBody,
-      failureType,
-      simulatedStatus: isTimeout ? null : statusCode,
-      responseHeaders: simulation.preserveHeaders ? { "content-type": "application/json", "x-simulator-rule": failureType } : { "content-type": "application/json" },
-      responseBody,
-      actualLatencyMs,
-      status,
-      timeline,
-      createdAt: startedAt,
-    })
-    .returning();
+  if (failureType === "connection_failure") {
+    finalStatus = null;
+    finalBody = null;
+  } else if (failureType === "timeout") {
+    finalStatus = null;
+    finalBody = null;
+    actualLatencyMs = Math.max(0, simulation.timeoutMs ?? 0);
+  } else if (failureType === "none" && simulation.forwardRequest) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
+    try {
+      const upstream = await fetch(buildUrl(simulation.targetUrl, requestQuery), { method, headers: requestHeaders, body: ["GET", "HEAD"].includes(method) ? undefined : requestBody ?? undefined, signal: controller.signal });
+      finalStatus = upstream.status;
+      finalBody = await upstream.text();
+      actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
+      responseHeaders = {};
+      upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders) responseHeaders[key] = value; });
+    } catch {
+      status = "timeout";
+      finalStatus = null;
+      finalBody = null;
+      actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
+    } finally { clearTimeout(timer); }
+  } else if (configuredLatency > 0) {
+    await new Promise(resolve => setTimeout(resolve, configuredLatency));
+  }
 
-  await db
-    .update(simulationsTable)
-    .set({
-      requestCount: simulation.requestCount + 1,
-      failedCount: simulation.failedCount + (isFailure || isTimeout ? 1 : 0),
-      successCount: simulation.successCount + (isFailure || isTimeout ? 0 : 1),
-      lastExecutedAt: startedAt,
-      updatedAt: startedAt,
-    })
-    .where((eq as any)(simulationsTable.id, simulation.id));
-
+  const [execution] = await db.insert(executionsTable).values({
+    simulationId: simulation.id, method, url: buildUrl(simulation.targetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
+    failureType, simulatedStatus: finalStatus, responseHeaders: simulation.preserveHeaders ? { ...responseHeaders, "x-simulator-rule": failureType } : {}, responseBody: finalBody,
+    actualLatencyMs, status, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
+  }).returning();
+  await db.update(simulationsTable).set({ requestCount: simulation.requestCount + 1, failedCount: simulation.failedCount + (isFailure || status === "timeout" ? 1 : 0), successCount: simulation.successCount + (isFailure || status === "timeout" ? 0 : 1), lastExecutedAt: startedAt, updatedAt: startedAt }).where((eq as any)(simulationsTable.id, simulation.id));
   return execution;
 }
 
@@ -486,7 +476,11 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
     queryParams,
     requestBody: body,
   });
-  res.status(execution.simulatedStatus ?? (execution.status === "timeout" ? 504 : 200)).set(execution.responseHeaders).send(execution.responseBody ?? "");
+  if (execution.status === "timeout" || execution.failureType === "connection_failure") {
+    res.destroy();
+    return;
+  }
+  res.status(execution.simulatedStatus ?? 200).set(execution.responseHeaders).send(execution.responseBody ?? "");
 }
 
 router.all("/proxy/simulations/:id", handleProxy);
