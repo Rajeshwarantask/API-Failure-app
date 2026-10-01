@@ -133,9 +133,12 @@ function Shell({ children }: { children: ReactNode }) {
     { href: '/simulations', label: 'Simulations', icon: SlidersHorizontal },
   ];
   return <div className="min-h-[100dvh] bg-background text-foreground">
-    <aside className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'md:w-[76px]' : 'md:w-[240px]'} fixed inset-y-0 left-0 z-40 flex w-[240px] flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-200 md:translate-x-0`}>
-      <div className={`flex h-[64px] items-center border-b border-sidebar-border ${sidebarCollapsed ? 'justify-center px-3' : 'justify-between px-5'}`}><Logo compact={sidebarCollapsed} /></div>
-      <div className="px-3 py-6">
+    <header className="fixed inset-x-0 top-0 z-50 flex h-[64px] items-center justify-between border-b border-border bg-background/95 px-5 shadow-sm backdrop-blur md:px-8">
+      <div className="flex min-w-0 items-center gap-3"><button aria-label="Open menu" data-testid="button-open-menu" onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:hidden"><Menu size={19} /></button><button aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} data-testid="button-toggle-sidebar" onClick={() => setSidebarCollapsed(value => !value)} className="hidden rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:inline-flex">{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><Logo /><span className="hidden text-xs text-muted-foreground sm:block">API workbench</span></div>
+      <div className="flex shrink-0 items-center gap-4"><span className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex"><span className="size-1.5 rounded-full bg-primary" /> API reachable</span><span className="h-4 w-px bg-border" /><div className="flex size-7 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground">OP</div></div>
+    </header>
+    <aside className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'md:w-[76px]' : 'md:w-[240px]'} fixed inset-y-0 left-0 top-[64px] z-40 flex w-[240px] flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-200 md:translate-x-0`}>
+      <div className="flex-1 px-3 py-6">
         {!sidebarCollapsed && <div className="mb-3 px-3 text-[11px] font-semibold text-sidebar-foreground/45">Workspace</div>}
         <nav className="space-y-1">
           {nav.map(({ href, label, icon: Icon }) => <Link key={href} href={href} title={sidebarCollapsed ? label : undefined} onClick={() => setMobileOpen(false)} data-testid={`link-nav-${label.toLowerCase()}`} className={`group flex items-center gap-3 rounded-lg py-2.5 text-sm ${sidebarCollapsed ? 'justify-center px-2' : 'px-3'} ${location === href ? 'bg-sidebar-accent font-semibold text-sidebar-accent-foreground' : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'}`}>
@@ -151,12 +154,8 @@ function Shell({ children }: { children: ReactNode }) {
         {!sidebarCollapsed && <div className="mt-4 flex items-center gap-2 px-2 text-[10px] text-sidebar-foreground/35"><Code2 size={13} /> v0.1.0 / local environment</div>}
       </div>
     </aside>
-    {mobileOpen && <button aria-label="Close menu" data-testid="button-close-menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-30 bg-slate-950/40 md:hidden" />}
-    <main className={`min-h-[100dvh] transition-[padding] duration-200 ${sidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[240px]'}`}>
-      <header className="sticky top-0 z-20 flex h-[64px] items-center justify-between border-b border-border bg-background/90 px-5 backdrop-blur md:px-8">
-        <div className="flex items-center gap-3"><button aria-label="Open menu" data-testid="button-open-menu" onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:hidden"><Menu size={19} /></button><button aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} data-testid="button-toggle-sidebar" onClick={() => setSidebarCollapsed(value => !value)} className="hidden rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:inline-flex">{sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</button><div className="text-xs font-semibold text-foreground/75">Faultline <span className="mx-1 font-normal text-muted-foreground/50">/</span><span className="font-normal text-muted-foreground">API workbench</span></div></div>
-        <div className="flex items-center gap-4"><span className="hidden items-center gap-2 text-[11px] text-muted-foreground sm:flex"><span className="size-1.5 rounded-full bg-primary" /> API reachable</span><span className="h-4 w-px bg-border" /><div className="flex size-7 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground">OP</div></div>
-      </header>
+    {mobileOpen && <button aria-label="Close menu" data-testid="button-close-menu" onClick={() => setMobileOpen(false)} className="fixed inset-0 top-[64px] z-30 bg-slate-950/40 md:hidden" />}
+    <main className={`min-h-[100dvh] pt-[64px] transition-[padding] duration-200 ${sidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[240px]'}`}>
       <div className="app-grid min-h-[calc(100dvh-64px)]"><div className="page-enter mx-auto max-w-[1480px] px-5 py-8 md:px-10 md:py-9">{children}</div></div>
     </main>
   </div>;
