@@ -205,9 +205,9 @@ async function executeSimulation(
   const isTimeout = failureType === "timeout";
   const isFailure = failureType !== "none" && failureType !== "latency";
   const configuredLatency = Math.max(0, overrides.latencyMs ?? simulation.latencyMs ?? 0);
-  const responseBody = overrides.responseBody !== undefined ? overrides.responseBody : failureType === "empty_response" ? "" : failureType === "malformed_json" ? '{"error":"unterminated"' : failureType === "none" ? null : simulation.responseBody ?? JSON.stringify({ error: failureType, status: statusCode }, null, 2);
+  const responseBody = overrides.responseBody !== undefined ? overrides.responseBody : failureType === "empty_response" ? "" : failureType === "malformed_json" ? '{"error":"unterminated"' : failureType === "none" || failureType === "latency" ? null : simulation.responseBody ?? JSON.stringify({ error: failureType, status: statusCode }, null, 2);
   let responseHeaders: Record<string, string> = { "content-type": "application/json" };
-  let actualLatencyMs = configuredLatency;
+  let actualLatencyMs = 0;
   let status: "success" | "failure" | "timeout" = isTimeout ? "timeout" : isFailure ? "failure" : "success";
   let finalStatus = statusCode;
   let finalBody = responseBody;
@@ -220,25 +220,32 @@ async function executeSimulation(
     finalBody = null;
     actualLatencyMs = Math.max(0, simulation.timeoutMs ?? 0);
     await new Promise(resolve => setTimeout(resolve, actualLatencyMs));
-  } else if ((failureType === "none" || failureType === "latency") && simulation.forwardRequest) {
+  } else {
     if (configuredLatency > 0) await new Promise(resolve => setTimeout(resolve, configuredLatency));
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
-    try {
-      const upstream = await fetch(buildUrl(simulation.targetUrl, requestQuery), { method, headers: requestHeaders, body: ["GET", "HEAD"].includes(method) ? undefined : requestBody ?? undefined, signal: controller.signal });
-      finalStatus = upstream.status;
-      finalBody = await upstream.text();
-      actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
-      responseHeaders = {};
-      upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders) responseHeaders[key] = value; });
-    } catch (error) {
-      status = error instanceof Error && error.name === "AbortError" ? "timeout" : "failure";
-      finalStatus = null;
+
+    if ((failureType === "none" || failureType === "latency") && simulation.forwardRequest) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
+      try {
+        const upstream = await fetch(buildUrl(simulation.targetUrl, requestQuery), { method, headers: requestHeaders, body: ["GET", "HEAD"].includes(method) ? undefined : requestBody ?? undefined, signal: controller.signal });
+        finalStatus = upstream.status;
+        finalBody = await upstream.text();
+        responseHeaders = {};
+        upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders) responseHeaders[key] = value; });
+        status = upstream.ok ? "success" : "failure";
+      } catch (error) {
+        status = error instanceof Error && error.name === "AbortError" ? "timeout" : "failure";
+        finalStatus = null;
+        finalBody = null;
+      } finally { clearTimeout(timer); }
+    } else if (failureType === "none" || failureType === "latency") {
+      finalStatus = 200;
       finalBody = null;
-      actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
-    } finally { clearTimeout(timer); }
-  } else if (configuredLatency > 0) {
-    await new Promise(resolve => setTimeout(resolve, configuredLatency));
+    }
+    actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
+  }
+  if (failureType === "timeout" || failureType === "connection_failure") {
+    actualLatencyMs = Math.max(actualLatencyMs, Date.now() - startedAt.getTime());
   }
 
   const [execution] = await db.insert(executionsTable).values({
