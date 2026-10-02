@@ -17,6 +17,19 @@ export const simulationsTable = pgTable("simulations", {
   latencyMs: integer("latency_ms").notNull().default(0),
   timeoutMs: integer("timeout_ms").notNull().default(5000),
   probability: real("probability").notNull().default(100),
+  conditions: jsonb("conditions").$type<{
+    method?: string;
+    path?: string;
+    headers?: Record<string, string>;
+    queryParams?: Record<string, string>;
+    bodyContains?: string;
+  }>().notNull().default({}),
+  workflow: jsonb("workflow").$type<Array<{
+    failureType: string;
+    statusCode?: number | null;
+    attempts?: number;
+    latencyMs?: number;
+  }>>().notNull().default([]),
   forwardRequest: boolean("forward_request").notNull().default(false),
   forwardTimeoutMs: integer("forward_timeout_ms").notNull().default(10000),
   preserveHeaders: boolean("preserve_headers").notNull().default(true),

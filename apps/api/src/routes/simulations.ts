@@ -178,7 +178,39 @@ type RunOverrides = {
   statusCode?: number;
   latencyMs?: number;
   responseBody?: string;
+  seed?: number;
+  workflow?: Array<{ failureType: FailureType; statusCode?: number; attempts?: number; latencyMs?: number }>;
 };
+
+type Conditions = {
+  method?: string;
+  path?: string;
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  bodyContains?: string;
+};
+
+function matchesConditions(conditions: Conditions | null | undefined, request: RequestOverrides, targetUrl: string): boolean {
+  if (!conditions || Object.keys(conditions).length === 0) return true;
+  if (conditions.method && conditions.method.toUpperCase() !== request.method) return false;
+  if (conditions.path && !new URL(targetUrl).pathname.includes(conditions.path)) return false;
+  for (const [key, value] of Object.entries(conditions.headers ?? {})) {
+    if ((request.headers ?? {})[key.toLowerCase()] !== value && (request.headers ?? {})[key] !== value) return false;
+  }
+  for (const [key, value] of Object.entries(conditions.queryParams ?? {})) {
+    if ((request.queryParams ?? {})[key] !== value) return false;
+  }
+  if (conditions.bodyContains && !(request.requestBody ?? "").includes(conditions.bodyContains)) return false;
+  return true;
+}
+
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (1664525 * state + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
 
 type RequestOverrides = {
   method?: HttpMethod;
@@ -193,14 +225,19 @@ async function executeSimulation(
   requestOverrides: RequestOverrides = {},
 ) {
   const startedAt = now();
-  const configuredFailure = (overrides.failureType ?? (simulation.enabled ? simulation.failureType : "none")) as FailureType;
-  const probability = Math.max(0, Math.min(100, simulation.enabled ? simulation.probability : 0));
-  const injected = configuredFailure !== "none" && (probability >= 100 || (probability > 0 && Math.random() * 100 < probability));
-  const failureType: FailureType = injected ? configuredFailure : "none";
   const method = requestOverrides.method ?? (simulation.method as HttpMethod);
   const requestHeaders = requestOverrides.headers ?? simulation.headers;
   const requestQuery = requestOverrides.queryParams ?? simulation.queryParams;
   const requestBody = requestOverrides.requestBody === undefined ? simulation.requestBody : requestOverrides.requestBody;
+  const request = { method, headers: requestHeaders, queryParams: requestQuery, requestBody };
+  const conditionsMatch = matchesConditions(simulation.conditions as Conditions, request, simulation.targetUrl);
+  const workflow = overrides.workflow ?? simulation.workflow ?? [];
+  const workflowStep = workflow.length > 0 ? workflow.find((step) => (step.attempts ?? 1) > 0) : undefined;
+  const configuredFailure = (workflowStep?.failureType ?? overrides.failureType ?? (simulation.enabled && conditionsMatch ? simulation.failureType : "none")) as FailureType;
+  const probability = Math.max(0, Math.min(100, simulation.enabled && conditionsMatch ? simulation.probability : 0));
+  const random = seededRandom(overrides.seed ?? simulation.id);
+  const injected = configuredFailure !== "none" && (probability >= 100 || (probability > 0 && random() * 100 < probability));
+  const failureType: FailureType = injected ? configuredFailure : "none";
   const statusCode = failureStatuses[failureType] ?? (failureType === "none" ? null : overrides.statusCode ?? simulation.statusCode ?? 503);
   const isTimeout = failureType === "timeout";
   const isFailure = failureType !== "none" && failureType !== "latency";
@@ -220,6 +257,14 @@ async function executeSimulation(
     finalBody = null;
     actualLatencyMs = Math.max(0, simulation.timeoutMs ?? 0);
     await new Promise(resolve => setTimeout(resolve, actualLatencyMs));
+  } else if (failureType === "duplicate_response") {
+    finalStatus = statusCode ?? 200;
+    finalBody = JSON.stringify({
+      duplicate: true,
+      responses: [simulation.responseBody ?? JSON.stringify({ status: finalStatus }), simulation.responseBody ?? JSON.stringify({ status: finalStatus })],
+    });
+    status = "failure";
+    actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
   } else {
     if (configuredLatency > 0) await new Promise(resolve => setTimeout(resolve, configuredLatency));
 
@@ -311,6 +356,8 @@ router.post("/simulations", async (req, res): Promise<void> => {
       latencyMs: data.latencyMs ?? 0,
       timeoutMs: data.timeoutMs ?? 5000,
       probability: data.probability ?? 100,
+      conditions: data.conditions ?? {},
+      workflow: data.workflow ?? [],
       forwardRequest: data.forwardRequest ?? false,
       forwardTimeoutMs: data.forwardTimeoutMs ?? 10000,
       preserveHeaders: data.preserveHeaders ?? true,
@@ -427,6 +474,31 @@ router.get("/executions/:id", async (req, res): Promise<void> => {
     return;
   }
   res.json(GetExecutionResponse.parse(execution));
+});
+
+router.post("/executions/:id/compare", async (req, res): Promise<void> => {
+  const original = await getExecution(Number(req.params.id));
+  const replay = await getExecution(Number(req.body?.replayExecutionId));
+  if (!original || !replay) { res.status(404).json({ error: "Execution not found" }); return; }
+  res.json({ original, replay, differences: {
+    status: original.status !== replay.status,
+    latencyMs: replay.actualLatencyMs - original.actualLatencyMs,
+    failureType: original.failureType !== replay.failureType,
+    response: original.responseBody !== replay.responseBody,
+    timeline: JSON.stringify(original.timeline) !== JSON.stringify(replay.timeline),
+  }});
+});
+
+router.post("/simulations/:id/recovery", async (req, res): Promise<void> => {
+  const simulation = await getSimulation(Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  const workflow = Array.isArray(req.body?.workflow) ? req.body.workflow : simulation.workflow;
+  const executions = [];
+  for (const step of workflow ?? []) {
+    const attempts = Math.max(1, Math.min(100, Number(step.attempts ?? 1)));
+    for (let attempt = 0; attempt < attempts; attempt++) executions.push(await executeSimulation(simulation, { ...step, seed: Number(req.body?.seed ?? simulation.id) + attempt }));
+  }
+  res.status(201).json({ executions, recovered: executions.at(-1)?.status === "success" });
 });
 
 router.post("/executions/:id/replay", async (req, res): Promise<void> => {
