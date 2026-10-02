@@ -7,17 +7,19 @@
  */
 import type { FailureType } from './failureType';
 
-export interface RunSimulationInput {
-  failureType?: FailureType;
+export interface WorkflowStep {
+  failureType: FailureType;
   /**
      * @minimum 100
      * @maximum 599
+     * @nullable
      */
-  statusCode?: number;
+  statusCode?: number | null;
   /**
-     * @minimum 0
-     * @maximum 120000
+     * @minimum 1
+     * @maximum 100
      */
+  attempts?: number;
+  /** @minimum 0 */
   latencyMs?: number;
-  responseBody?: string;
 }

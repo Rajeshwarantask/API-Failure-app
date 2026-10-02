@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { RunSimulationInput } from './runSimulationInput';
 
-export type ReplayInput = RunSimulationInput;
+export interface CompareExecutionsInput {
+  /** @minimum 1 */
+  replayExecutionId: number;
+}
