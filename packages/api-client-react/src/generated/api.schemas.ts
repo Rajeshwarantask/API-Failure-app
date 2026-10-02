@@ -59,6 +59,18 @@ export interface TimelineEvent {
   tone: TimelineEventTone;
 }
 
+export type SimulationConditions = { [key: string]: unknown };
+
+export type SimulationWorkflowItem = {
+  failureType: FailureType;
+  /** @nullable */
+  statusCode?: number | null;
+  /** @minimum 1 */
+  attempts?: number;
+  /** @minimum 0 */
+  latencyMs?: number;
+};
+
 export interface Simulation {
   id: number;
   name: string;
@@ -84,6 +96,8 @@ export interface Simulation {
      * @maximum 100
      */
   probability: number;
+  conditions?: SimulationConditions;
+  workflow?: SimulationWorkflowItem[];
   forwardRequest: boolean;
   /** @minimum 0 */
   forwardTimeoutMs: number;
@@ -101,6 +115,18 @@ export interface Simulation {
   createdAt: string;
   updatedAt: string;
 }
+
+export type SimulationInputConditions = { [key: string]: unknown };
+
+export type SimulationInputWorkflowItem = {
+  failureType: FailureType;
+  /** @nullable */
+  statusCode?: number | null;
+  /** @minimum 1 */
+  attempts?: number;
+  /** @minimum 0 */
+  latencyMs?: number;
+};
 
 export interface SimulationInput {
   /** @minLength 1 */
@@ -133,6 +159,8 @@ export interface SimulationInput {
      * @maximum 100
      */
   probability?: number;
+  conditions?: SimulationInputConditions;
+  workflow?: SimulationInputWorkflowItem[];
   forwardRequest?: boolean;
   /**
      * @minimum 0
@@ -142,6 +170,18 @@ export interface SimulationInput {
   preserveHeaders?: boolean;
   enabled?: boolean;
 }
+
+export type SimulationUpdateConditions = { [key: string]: unknown };
+
+export type SimulationUpdateWorkflowItem = {
+  failureType: FailureType;
+  /** @nullable */
+  statusCode?: number | null;
+  /** @minimum 1 */
+  attempts?: number;
+  /** @minimum 0 */
+  latencyMs?: number;
+};
 
 export interface SimulationUpdate {
   /** @minLength 1 */
@@ -174,6 +214,8 @@ export interface SimulationUpdate {
      * @maximum 100
      */
   probability?: number;
+  conditions?: SimulationUpdateConditions;
+  workflow?: SimulationUpdateWorkflowItem[];
   forwardRequest?: boolean;
   /**
      * @minimum 0
@@ -235,6 +277,52 @@ export interface RunSimulationInput {
 }
 
 export type ReplayInput = RunSimulationInput;
+
+export interface CompareExecutionsInput {
+  /** @minimum 1 */
+  replayExecutionId: number;
+}
+
+export type ExecutionComparisonDifferences = {
+  status: boolean;
+  latencyMs: number;
+  failureType: boolean;
+  response: boolean;
+  timeline: boolean;
+};
+
+export interface ExecutionComparison {
+  original: Execution;
+  replay: Execution;
+  differences: ExecutionComparisonDifferences;
+}
+
+export interface WorkflowStep {
+  failureType: FailureType;
+  /**
+     * @minimum 100
+     * @maximum 599
+     * @nullable
+     */
+  statusCode?: number | null;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  attempts?: number;
+  /** @minimum 0 */
+  latencyMs?: number;
+}
+
+export interface RecoveryWorkflowInput {
+  seed?: number;
+  workflow?: WorkflowStep[];
+}
+
+export interface RecoveryWorkflowResult {
+  executions: Execution[];
+  recovered: boolean;
+}
 
 export interface DashboardSummary {
   totalSimulations: number;

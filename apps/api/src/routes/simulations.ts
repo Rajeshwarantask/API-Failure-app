@@ -258,11 +258,14 @@ async function executeSimulation(
     actualLatencyMs = Math.max(0, simulation.timeoutMs ?? 0);
     await new Promise(resolve => setTimeout(resolve, actualLatencyMs));
   } else if (failureType === "duplicate_response") {
-    finalStatus = statusCode ?? 200;
+    // HTTP permits one response per request; model the duplicate-write hazard as a single 502 with diagnostic metadata.
+    finalStatus = 502;
     finalBody = JSON.stringify({
-      duplicate: true,
-      responses: [simulation.responseBody ?? JSON.stringify({ status: finalStatus }), simulation.responseBody ?? JSON.stringify({ status: finalStatus })],
+      error: "duplicate_response",
+      message: "The simulator detected an attempted duplicate response.",
+      attemptedStatus: statusCode ?? 200,
     });
+    responseHeaders["x-faultline-duplicate-response"] = "true";
     status = "failure";
     actualLatencyMs = Math.max(0, Date.now() - startedAt.getTime());
   } else {

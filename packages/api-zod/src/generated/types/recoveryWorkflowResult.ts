@@ -6,8 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Execution } from './execution';
-import type { Simulation } from './simulation';
 
-export type SimulationDetail = Simulation & {
+export interface RecoveryWorkflowResult {
   executions: Execution[];
-};
+  recovered: boolean;
+}

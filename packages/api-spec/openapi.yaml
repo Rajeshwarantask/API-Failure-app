@@ -194,6 +194,50 @@ paths:
                 $ref: "#/components/schemas/Execution"
         "404":
           description: Execution not found
+  /executions/{id}/compare:
+    post:
+      operationId: compareExecutions
+      tags: [simulations]
+      summary: Compare two executions
+      parameters:
+        - $ref: "#/components/parameters/ExecutionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompareExecutionsInput"
+      responses:
+        "200":
+          description: Execution comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionComparison"
+        "404":
+          description: Execution not found
+  /simulations/{id}/recovery:
+    post:
+      operationId: createRecoveryWorkflow
+      tags: [simulations]
+      summary: Run a recovery workflow for a simulation
+      parameters:
+        - $ref: "#/components/parameters/SimulationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecoveryWorkflowInput"
+      responses:
+        "201":
+          description: Recovery workflow result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryWorkflowResult"
+        "404":
+          description: Simulation not found
 components:
   parameters:
     SimulationId:
@@ -457,6 +501,49 @@ components:
         responseBody: { type: string }
     ReplayInput:
       $ref: "#/components/schemas/RunSimulationInput"
+    CompareExecutionsInput:
+      type: object
+      required: [replayExecutionId]
+      properties:
+        replayExecutionId: { type: integer, minimum: 1 }
+    ExecutionComparison:
+      type: object
+      required: [original, replay, differences]
+      properties:
+        original: { $ref: "#/components/schemas/Execution" }
+        replay: { $ref: "#/components/schemas/Execution" }
+        differences:
+          type: object
+          required: [status, latencyMs, failureType, response, timeline]
+          properties:
+            status: { type: boolean }
+            latencyMs: { type: integer }
+            failureType: { type: boolean }
+            response: { type: boolean }
+            timeline: { type: boolean }
+    WorkflowStep:
+      type: object
+      required: [failureType]
+      properties:
+        failureType: { $ref: "#/components/schemas/FailureType" }
+        statusCode: { type: [integer, "null"], minimum: 100, maximum: 599 }
+        attempts: { type: integer, minimum: 1, maximum: 100 }
+        latencyMs: { type: integer, minimum: 0 }
+    RecoveryWorkflowInput:
+      type: object
+      properties:
+        seed: { type: integer }
+        workflow:
+          type: array
+          items: { $ref: "#/components/schemas/WorkflowStep" }
+    RecoveryWorkflowResult:
+      type: object
+      required: [executions, recovered]
+      properties:
+        executions:
+          type: array
+          items: { $ref: "#/components/schemas/Execution" }
+        recovered: { type: boolean }
     DashboardSummary:
       type: object
       required: [totalSimulations, activeSimulations, requestsExecuted, failedRequests, successfulRequests, recentRuns]
