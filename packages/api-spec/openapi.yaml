@@ -297,6 +297,19 @@ components:
         latencyMs: { type: integer, minimum: 0 }
         timeoutMs: { type: integer, minimum: 0 }
         probability: { type: number, minimum: 0, maximum: 100 }
+        conditions:
+          type: object
+          additionalProperties: true
+        workflow:
+          type: array
+          items:
+            type: object
+            required: [failureType]
+            properties:
+              failureType: { $ref: "#/components/schemas/FailureType" }
+              statusCode: { type: [integer, "null"] }
+              attempts: { type: integer, minimum: 1 }
+              latencyMs: { type: integer, minimum: 0 }
         forwardRequest: { type: boolean }
         forwardTimeoutMs: { type: integer, minimum: 0 }
         preserveHeaders: { type: boolean }
@@ -329,6 +342,19 @@ components:
         latencyMs: { type: integer, minimum: 0, maximum: 120000 }
         timeoutMs: { type: integer, minimum: 0, maximum: 120000 }
         probability: { type: number, minimum: 0, maximum: 100 }
+        conditions:
+          type: object
+          additionalProperties: true
+        workflow:
+          type: array
+          items:
+            type: object
+            required: [failureType]
+            properties:
+              failureType: { $ref: "#/components/schemas/FailureType" }
+              statusCode: { type: [integer, "null"] }
+              attempts: { type: integer, minimum: 1 }
+              latencyMs: { type: integer, minimum: 0 }
         forwardRequest: { type: boolean }
         forwardTimeoutMs: { type: integer, minimum: 0, maximum: 120000 }
         preserveHeaders: { type: boolean }
@@ -353,6 +379,19 @@ components:
         latencyMs: { type: integer, minimum: 0, maximum: 120000 }
         timeoutMs: { type: integer, minimum: 0, maximum: 120000 }
         probability: { type: number, minimum: 0, maximum: 100 }
+        conditions:
+          type: object
+          additionalProperties: true
+        workflow:
+          type: array
+          items:
+            type: object
+            required: [failureType]
+            properties:
+              failureType: { $ref: "#/components/schemas/FailureType" }
+              statusCode: { type: [integer, "null"] }
+              attempts: { type: integer, minimum: 1 }
+              latencyMs: { type: integer, minimum: 0 }
         forwardRequest: { type: boolean }
         forwardTimeoutMs: { type: integer, minimum: 0, maximum: 120000 }
         preserveHeaders: { type: boolean }
