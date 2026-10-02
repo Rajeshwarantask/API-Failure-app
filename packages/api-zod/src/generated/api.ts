@@ -142,7 +142,9 @@ export const CreateSimulationBody = zod.object({
   "forwardRequest": zod.boolean().optional(),
   "forwardTimeoutMs": zod.number().int().min(createSimulationBodyForwardTimeoutMsMin).max(createSimulationBodyForwardTimeoutMsMax).optional(),
   "preserveHeaders": zod.boolean().optional(),
-  "enabled": zod.boolean().optional()
+  "enabled": zod.boolean().optional(),
+  "conditions": zod.record(zod.string(), zod.any()).optional(),
+  "workflow": zod.array(zod.object({ "failureType": zod.string(), "statusCode": zod.number().int().nullish(), "attempts": zod.number().int().optional(), "latencyMs": zod.number().int().optional() })).optional()
 })
 
 export const createSimulationResponseLatencyMsMin = 0;
@@ -438,8 +440,13 @@ export const RunSimulationBody = zod.object({
   "failureType": zod.enum(['none', 'http_400', 'http_401', 'http_403', 'http_404', 'http_429', 'http_500', 'http_502', 'http_503', 'timeout', 'latency', 'connection_failure', 'malformed_json', 'empty_response', 'duplicate_response']).optional(),
   "statusCode": zod.number().int().min(runSimulationBodyStatusCodeMin).max(runSimulationBodyStatusCodeMax).optional(),
   "latencyMs": zod.number().int().min(runSimulationBodyLatencyMsMin).max(runSimulationBodyLatencyMsMax).optional(),
-  "responseBody": zod.string().optional()
-})
+  "responseBody": zod.string().optional(),
+  "seed": zod.number().int().optional(),
+  "method": zod.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+  "headers": zod.record(zod.string(), zod.string()).optional(),
+  "queryParams": zod.record(zod.string(), zod.string()).optional(),
+  "requestBody": zod.string().nullish().optional()
+  })
 
 export const runSimulationResponseActualLatencyMsMin = 0;
 
@@ -527,8 +534,9 @@ export const ReplayExecutionBody = zod.object({
   "failureType": zod.enum(['none', 'http_400', 'http_401', 'http_403', 'http_404', 'http_429', 'http_500', 'http_502', 'http_503', 'timeout', 'latency', 'connection_failure', 'malformed_json', 'empty_response', 'duplicate_response']).optional(),
   "statusCode": zod.number().int().min(replayExecutionBodyStatusCodeMin).max(replayExecutionBodyStatusCodeMax).optional(),
   "latencyMs": zod.number().int().min(replayExecutionBodyLatencyMsMin).max(replayExecutionBodyLatencyMsMax).optional(),
-  "responseBody": zod.string().optional()
-})
+  "responseBody": zod.string().optional(),
+  "seed": zod.number().int().optional()
+  })
 
 export const replayExecutionResponseActualLatencyMsMin = 0;
 
