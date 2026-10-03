@@ -5,6 +5,7 @@ import { AuthGate } from '@/components/auth-gate';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import SettingsPage from '@/pages/settings';
 import {
   Activity,
   AlertTriangle,
@@ -137,6 +138,7 @@ function Shell({ children }: { children: ReactNode }) {
     { href: '/', label: 'Overview', icon: Activity },
     { href: '/simulations', label: 'Simulations', icon: SlidersHorizontal },
     { href: '/recovery', label: 'Recovery', icon: GitBranch },
+    { href: '/settings', label: 'Settings', icon: Settings2 },
   ];
   return <div className="min-h-[100dvh] bg-background text-foreground">
     <header className="fixed inset-x-0 top-0 z-50 flex h-[64px] items-center justify-between border-b border-border bg-background/95 px-5 shadow-sm backdrop-blur md:px-8">
@@ -421,6 +423,7 @@ function Router() {
     <Route path="/simulations/:id" component={SimulationDetail} />
     <Route path="/simulations" component={Simulations} />
     <Route path="/recovery" component={Recovery} />
+    <Route path="/settings" component={SettingsPage} />
     <Route path="/executions/:id/compare" component={() => { const params = useParams<{ id: string }>(); return <Compare id={Number(params.id)} />; }} />
     <Route path="/executions/:id/replay" component={Replay} />
     <Route path="/executions/:id" component={ExecutionInspector} />

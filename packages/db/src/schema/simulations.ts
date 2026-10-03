@@ -15,6 +15,7 @@ export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   codeHash: text("code_hash").notNull().unique(),
+  teamCode: text("team_code").notNull(),
   ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   retentionWeeks: integer("retention_weeks").notNull().default(2),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
