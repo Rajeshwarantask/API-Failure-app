@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { jwtVerify } from "jose";
 
-export type AuthenticatedRequest = Request & { userId?: string; userEmail?: string };
+export type AuthenticatedRequest = Request & { userId: string; userEmail?: string };
 
 export async function requireAuth(request: AuthenticatedRequest, response: Response, next: NextFunction) {
   const header = request.header("authorization");

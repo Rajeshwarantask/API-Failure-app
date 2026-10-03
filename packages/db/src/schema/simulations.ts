@@ -70,6 +70,8 @@ export const simulationsTable = pgTable("simulations", {
 
 export const executionsTable = pgTable("executions", {
   id: serial("id").primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  teamId: integer("team_id").references(() => teamsTable.id, { onDelete: "set null" }),
   simulationId: integer("simulation_id").notNull().references(() => simulationsTable.id, { onDelete: "cascade" }),
   method: text("method").notNull(),
   url: text("url").notNull(),
@@ -88,6 +90,8 @@ export const executionsTable = pgTable("executions", {
 
 export const insertSimulationSchema = createInsertSchema(simulationsTable).omit({
   id: true,
+  ownerId: true,
+  teamId: true,
   requestCount: true,
   failedCount: true,
   successCount: true,
