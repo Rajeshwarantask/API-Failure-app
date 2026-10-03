@@ -1,9 +1,35 @@
-import { integer, jsonb, pgTable, real, serial, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, real, serial, text, timestamp, uuid, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
+export const usersTable = pgTable("faultline_users", {
+  id: uuid("id").primaryKey(),
+  displayName: text("display_name"),
+  email: text("email").notNull(),
+  retentionWeeks: integer("retention_weeks").notNull().default(2),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const teamsTable = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  codeHash: text("code_hash").notNull().unique(),
+  ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  retentionWeeks: integer("retention_weeks").notNull().default(2),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const teamMembersTable = pgTable("team_members", {
+  teamId: integer("team_id").notNull().references(() => teamsTable.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({ primaryKey: primaryKey({ columns: [table.teamId, table.userId] }) }));
+
 export const simulationsTable = pgTable("simulations", {
   id: serial("id").primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  teamId: integer("team_id").references(() => teamsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   targetUrl: text("target_url").notNull(),
