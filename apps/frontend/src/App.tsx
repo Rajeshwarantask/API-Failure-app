@@ -139,7 +139,10 @@ function Shell({ children }: { children: ReactNode }) {
   ];
   return <div className="min-h-[100dvh] bg-background text-foreground">
     <header className="fixed inset-x-0 top-0 z-50 flex h-[64px] items-center justify-between border-b border-border bg-background/95 px-5 shadow-sm backdrop-blur md:px-8">
-      <Logo />
+      <div className="flex items-center gap-3">
+        <button aria-label="Toggle workspace navigation" data-testid="button-toggle-sidebar-mobile" onClick={() => setMobileOpen(value => !value)} className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:hidden"><Menu size={17} /></button>
+        <Logo />
+      </div>
       <div className="flex size-7 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-secondary-foreground">OP</div>
     </header>
     <aside className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${sidebarCollapsed ? 'md:w-[68px]' : 'md:w-[240px]'} fixed inset-y-0 left-0 top-[64px] z-40 flex w-[240px] flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-200 md:translate-x-0`}>
