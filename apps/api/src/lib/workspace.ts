@@ -14,8 +14,8 @@ export function simulationAccess(userId: string, simulationId?: number) {
   );
 }
 
-export async function ensureUser(userId: string, email?: string) {
-  await db.insert(usersTable).values({ id: userId, email: email ?? `${userId}@supabase.local` }).onConflictDoUpdate({ target: usersTable.id, set: { ...(email ? { email } : {}), updatedAt: new Date() } });
+export async function ensureUser(userId: string, email?: string, displayName?: string) {
+  await db.insert(usersTable).values({ id: userId, email: email ?? `${userId}@supabase.local`, displayName: displayName || null }).onConflictDoUpdate({ target: usersTable.id, set: { ...(email ? { email } : {}), ...(displayName ? { displayName } : {}), updatedAt: new Date() } });
 }
 
 export async function canAccessTeam(userId: string, teamId: number) {
