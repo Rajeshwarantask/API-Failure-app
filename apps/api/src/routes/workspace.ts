@@ -9,10 +9,10 @@ const router = Router();
 
 router.get("/workspace", async (req: AuthenticatedRequest, res) => {
   const userId = requireUserId(req);
-  await ensureUser(userId, req.userEmail);
-  const [user] = await db.select({ retentionWeeks: usersTable.retentionWeeks }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  await ensureUser(userId, req.userEmail, req.userName);
+  const [user] = await db.select({ displayName: usersTable.displayName, email: usersTable.email, retentionWeeks: usersTable.retentionWeeks }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   const memberships = await db.select({ id: teamsTable.id, name: teamsTable.name, ownerId: teamsTable.ownerId, teamCode: teamsTable.teamCode, retentionWeeks: teamsTable.retentionWeeks, createdAt: teamsTable.createdAt }).from(teamMembersTable).innerJoin(teamsTable, eq(teamsTable.id, teamMembersTable.teamId)).where(eq(teamMembersTable.userId, userId));
-  res.json({ userId, email: req.userEmail ?? null, retentionWeeks: user?.retentionWeeks ?? 2, personalDeletionDate: getRetentionCutoff(user?.retentionWeeks ?? 2), teams: memberships.map(team => ({ ...team, deletionDate: getRetentionCutoff(team.retentionWeeks) })) });
+  res.json({ userId, name: user?.displayName ?? null, email: user?.email ?? req.userEmail ?? null, retentionWeeks: user?.retentionWeeks ?? 2, personalDeletionDate: getRetentionCutoff(user?.retentionWeeks ?? 2), teams: memberships.map(team => ({ ...team, deletionDate: getRetentionCutoff(team.retentionWeeks) })) });
 });
 
 router.post("/teams", async (req: AuthenticatedRequest, res) => {
