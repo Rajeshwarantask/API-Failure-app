@@ -417,10 +417,16 @@ router.patch("/simulations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const userId = requireUserId(req);
+  const existing = await getSimulation(userId, params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Simulation not found" });
+    return;
+  }
   const [simulation] = await db
     .update(simulationsTable)
     .set({ ...parsed.data, updatedAt: now() })
-    .where((eq as any)(simulationsTable.id, params.data.id))
+    .where((eq as any)(simulationsTable.id, existing.id))
     .returning();
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
@@ -435,9 +441,14 @@ router.delete("/simulations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const existing = await getSimulation(requireUserId(req), params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Simulation not found" });
+    return;
+  }
   const [simulation] = await db
     .delete(simulationsTable)
-    .where((eq as any)(simulationsTable.id, params.data.id))
+    .where((eq as any)(simulationsTable.id, existing.id))
     .returning();
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
@@ -498,8 +509,9 @@ router.get("/executions/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/executions/:id/compare", async (req, res): Promise<void> => {
-  const original = await getExecution(requireUserId(req), Number(req.params.id));
-  const replay = await getExecution(Number(req.body?.replayExecutionId));
+  const userId = requireUserId(req);
+  const original = await getExecution(userId, Number(req.params.id));
+  const replay = await getExecution(userId, Number(req.body?.replayExecutionId));
   if (!original || !replay) { res.status(404).json({ error: "Execution not found" }); return; }
   res.json({ original, replay, differences: {
     status: original.status !== replay.status,
@@ -538,7 +550,7 @@ router.post("/executions/:id/replay", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Execution not found" });
     return;
   }
-  const simulation = await getSimulation(execution.simulationId);
+  const simulation = await getSimulation(requireUserId(req), execution.simulationId);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
