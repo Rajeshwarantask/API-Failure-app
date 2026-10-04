@@ -4,6 +4,8 @@
 import { Router, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db, executionsTable, simulationsTable } from "@workspace/db";
+import { canAccessTeam, ensureUser, getAccessibleSimulation, requireUserId, simulationAccess } from "../lib/workspace.js";
+import type { AuthenticatedRequest } from "../middleware/auth.js";
 import {
   CreateSimulationBody,
   CreateSimulationResponse,
@@ -93,12 +95,15 @@ function createTimeline(type: FailureType, baseTime: Date) {
   ];
 }
 
-async function seedIfEmpty(): Promise<void> {
-  const existing = await db.select({ id: simulationsTable.id }).from(simulationsTable).limit(1);
+async function seedIfEmpty(userId: string, email?: string): Promise<void> {
+  await ensureUser(userId, email);
+  const existing = await db.select({ id: simulationsTable.id }).from(simulationsTable).where(eq(simulationsTable.ownerId, userId)).limit(1);
   if (existing.length > 0) return;
 
   await db.insert(simulationsTable).values([
     {
+      ownerId: userId,
+      teamId: null,
       name: "Payments · upstream 500",
       description: "Exercise retry and customer messaging when the payments provider is unavailable.",
       targetUrl: "https://api.stripe.com/v1/payment_intents",
@@ -121,6 +126,8 @@ async function seedIfEmpty(): Promise<void> {
       successCount: 11,
     },
     {
+      ownerId: userId,
+      teamId: null,
       name: "Search · rate limit",
       description: "Check that the search client backs off and respects Retry-After.",
       targetUrl: "https://api.acme-search.dev/v2/query",
@@ -143,6 +150,8 @@ async function seedIfEmpty(): Promise<void> {
       successCount: 6,
     },
     {
+      ownerId: userId,
+      teamId: null,
       name: "Profile · timeout recovery",
       description: "Validate request cancellation and recovery when a profile service stalls.",
       targetUrl: "https://profiles.internal.example/v1/me",
@@ -297,7 +306,7 @@ async function executeSimulation(
   }
 
   const [execution] = await db.insert(executionsTable).values({
-    simulationId: simulation.id, method, url: buildUrl(simulation.targetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
+    ownerId: simulation.ownerId, teamId: simulation.teamId, simulationId: simulation.id, method, url: buildUrl(simulation.targetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
     failureType, simulatedStatus: finalStatus, responseHeaders: simulation.preserveHeaders ? { ...responseHeaders, "x-simulator-rule": failureType } : {}, responseBody: finalBody,
     actualLatencyMs, status, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
   }).returning();
@@ -305,20 +314,20 @@ async function executeSimulation(
   return execution;
 }
 
-async function getSimulation(id: number) {
-  const [simulation] = await db.select().from(simulationsTable).where((eq as any)(simulationsTable.id, id));
-  return simulation;
+async function getSimulation(userId: string, id: number) {
+  return getAccessibleSimulation(userId, id);
 }
 
-async function getExecution(id: number) {
-  const [execution] = await db.select().from(executionsTable).where((eq as any)(executionsTable.id, id));
-  return execution;
+async function getExecution(userId: string, id: number) {
+  const [execution] = await db.select({ execution: executionsTable }).from(executionsTable).innerJoin(simulationsTable, eq(executionsTable.simulationId, simulationsTable.id)).where(and(eq(executionsTable.id, id), simulationAccess(userId))).limit(1);
+  return execution?.execution;
 }
 
-router.get("/dashboard", async (_req: Request, res: Response): Promise<void> => {
-  await seedIfEmpty();
-  const simulations = await db.select().from(simulationsTable);
-  const recent = await db.select().from(executionsTable).orderBy((desc as any)(executionsTable.createdAt)).limit(8);
+router.get("/dashboard", async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  await seedIfEmpty(requireUserId(req), (req as AuthenticatedRequest).userEmail);
+  const userId = requireUserId(req);
+  const simulations = await db.select().from(simulationsTable).where(simulationAccess(userId));
+  const recent = await db.select({ execution: executionsTable }).from(executionsTable).innerJoin(simulationsTable, eq(executionsTable.simulationId, simulationsTable.id)).where(simulationAccess(userId)).orderBy((desc as any)(executionsTable.createdAt)).limit(8).then(rows => rows.map(row => row.execution));
   const payload = {
     totalSimulations: simulations.length,
     activeSimulations: simulations.filter((item) => item.enabled).length,
@@ -330,22 +339,29 @@ router.get("/dashboard", async (_req: Request, res: Response): Promise<void> => 
   res.json(GetDashboardSummaryResponse.parse(payload));
 });
 
-router.get("/simulations", async (_req, res): Promise<void> => {
-  await seedIfEmpty();
-  const simulations = await db.select().from(simulationsTable).orderBy(desc(simulationsTable.updatedAt));
+router.get("/simulations", async (req: AuthenticatedRequest, res): Promise<void> => {
+  await seedIfEmpty(requireUserId(req), (req as AuthenticatedRequest).userEmail);
+  const simulations = await db.select().from(simulationsTable).where(simulationAccess(requireUserId(req))).orderBy(desc(simulationsTable.updatedAt));
   res.json(ListSimulationsResponse.parse(simulations.map(mapSimulation)));
 });
 
-router.post("/simulations", async (req, res): Promise<void> => {
+router.post("/simulations", async (req: AuthenticatedRequest, res): Promise<void> => {
   const parsed = CreateSimulationBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
   const data = parsed.data;
+  const teamId = typeof req.body?.teamId === "number" ? req.body.teamId : null;
+  if (teamId !== null && !(await canAccessTeam(requireUserId(req), teamId))) {
+    res.status(403).json({ error: "You are not a member of that team." });
+    return;
+  }
   const [simulation] = await db
     .insert(simulationsTable)
     .values({
+      ownerId: requireUserId(req),
+      teamId,
       name: data.name,
       description: data.description ?? null,
       targetUrl: data.targetUrl,
@@ -376,7 +392,7 @@ router.get("/simulations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const simulation = await getSimulation(params.data.id);
+  const simulation = await getSimulation(requireUserId(req), params.data.id);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
@@ -401,10 +417,16 @@ router.patch("/simulations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  const userId = requireUserId(req);
+  const existing = await getSimulation(userId, params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Simulation not found" });
+    return;
+  }
   const [simulation] = await db
     .update(simulationsTable)
     .set({ ...parsed.data, updatedAt: now() })
-    .where((eq as any)(simulationsTable.id, params.data.id))
+    .where((eq as any)(simulationsTable.id, existing.id))
     .returning();
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
@@ -419,9 +441,14 @@ router.delete("/simulations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const existing = await getSimulation(requireUserId(req), params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Simulation not found" });
+    return;
+  }
   const [simulation] = await db
     .delete(simulationsTable)
-    .where((eq as any)(simulationsTable.id, params.data.id))
+    .where((eq as any)(simulationsTable.id, existing.id))
     .returning();
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
@@ -430,16 +457,18 @@ router.delete("/simulations/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.get("/simulations/:id/executions", async (req, res): Promise<void> => {
+router.get("/simulations/:id/executions", async (req: AuthenticatedRequest, res): Promise<void> => {
   const params = ListExecutionsParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const simulation = await getSimulation(requireUserId(req), params.data.id);
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
   const executions = await db
     .select()
     .from(executionsTable)
-    .where((eq as any)(executionsTable.simulationId, params.data.id))
+    .where((eq as any)(executionsTable.simulationId, simulation.id))
     .orderBy((desc as any)(executionsTable.createdAt))
     .limit(100);
   res.json(ListExecutionsResponse.parse(executions));
@@ -456,7 +485,7 @@ router.post("/simulations/:id/executions", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const simulation = await getSimulation(params.data.id);
+  const simulation = await getSimulation(requireUserId(req), params.data.id);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
@@ -471,7 +500,7 @@ router.get("/executions/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const execution = await getExecution(params.data.id);
+  const execution = await getExecution(requireUserId(req), params.data.id);
   if (!execution) {
     res.status(404).json({ error: "Execution not found" });
     return;
@@ -480,8 +509,9 @@ router.get("/executions/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/executions/:id/compare", async (req, res): Promise<void> => {
-  const original = await getExecution(Number(req.params.id));
-  const replay = await getExecution(Number(req.body?.replayExecutionId));
+  const userId = requireUserId(req);
+  const original = await getExecution(userId, Number(req.params.id));
+  const replay = await getExecution(userId, Number(req.body?.replayExecutionId));
   if (!original || !replay) { res.status(404).json({ error: "Execution not found" }); return; }
   res.json({ original, replay, differences: {
     status: original.status !== replay.status,
@@ -493,7 +523,7 @@ router.post("/executions/:id/compare", async (req, res): Promise<void> => {
 });
 
 router.post("/simulations/:id/recovery", async (req, res): Promise<void> => {
-  const simulation = await getSimulation(Number(req.params.id));
+  const simulation = await getSimulation(requireUserId(req), Number(req.params.id));
   if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
   const workflow = Array.isArray(req.body?.workflow) ? req.body.workflow : simulation.workflow;
   const executions = [];
@@ -515,12 +545,12 @@ router.post("/executions/:id/replay", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const execution = await getExecution(params.data.id);
+  const execution = await getExecution(requireUserId(req), params.data.id);
   if (!execution) {
     res.status(404).json({ error: "Execution not found" });
     return;
   }
-  const simulation = await getSimulation(execution.simulationId);
+  const simulation = await getSimulation(requireUserId(req), execution.simulationId);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
@@ -540,7 +570,7 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
     res.status(400).json({ error: "Invalid simulation id" });
     return;
   }
-  const simulation = await getSimulation(id);
+  const simulation = await getSimulation(requireUserId(req), id);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
