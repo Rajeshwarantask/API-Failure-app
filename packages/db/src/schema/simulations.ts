@@ -81,6 +81,7 @@ export const executionsTable = pgTable("executions", {
   requestHeaders: jsonb("request_headers").$type<Record<string, string>>().notNull().default({}),
   requestQuery: jsonb("request_query").$type<Record<string, string>>().notNull().default({}),
   requestBody: text("request_body"),
+  source: text("source").notNull().default("dashboard"),
   failureType: text("failure_type").notNull(),
   simulatedStatus: integer("simulated_status"),
   responseHeaders: jsonb("response_headers").$type<Record<string, string>>().notNull().default({}),

@@ -266,6 +266,7 @@ type RequestOverrides = {
   queryParams?: Record<string, string>;
   requestBody?: string | null;
   pathSuffix?: string;
+  source?: "dashboard" | "external";
 };
 
 async function executeSimulation(
@@ -358,7 +359,7 @@ async function executeSimulation(
   const [execution] = await db.insert(executionsTable).values({
     ownerId: simulation.ownerId, teamId: simulation.teamId, simulationId: simulation.id, method, url: buildUrl(effectiveTargetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
     failureType, simulatedStatus: finalStatus, responseHeaders: simulation.preserveHeaders ? { ...responseHeaders, "x-simulator-rule": failureType } : {}, responseBody: finalBody,
-    actualLatencyMs, status, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
+    actualLatencyMs, status, source: requestOverrides.source ?? "dashboard", timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
   }).returning();
   await db.update(simulationsTable).set({ requestCount: simulation.requestCount + 1, failedCount: simulation.failedCount + (isFailure || status === "timeout" ? 1 : 0), successCount: simulation.successCount + (isFailure || status === "timeout" ? 0 : 1), lastExecutedAt: startedAt, updatedAt: startedAt }).where((eq as any)(simulationsTable.id, simulation.id));
   return execution;
@@ -655,6 +656,7 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
     queryParams,
     requestBody: body,
     pathSuffix: suffix,
+    source: "external",
   });
   if (execution.status === "timeout" || execution.failureType === "connection_failure") {
     res.destroy();

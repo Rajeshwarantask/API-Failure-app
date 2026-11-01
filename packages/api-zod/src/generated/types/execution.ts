@@ -21,6 +21,7 @@ export interface Execution {
   /** @nullable */
   requestBody?: string | null;
   failureType: FailureType;
+  source: 'dashboard' | 'external';
   /** @nullable */
   simulatedStatus?: number | null;
   responseHeaders: KeyValueMap;
