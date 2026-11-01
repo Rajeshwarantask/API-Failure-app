@@ -86,7 +86,7 @@ function tokenFromRequest(req: Request): string | null {
 }
 
 function originAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
-  if (!origin) return true;
+  if (!origin || allowedOrigins.length === 0) return true;
   return allowedOrigins.includes("*") || allowedOrigins.includes(origin);
 }
 
@@ -97,12 +97,14 @@ function applyProxyCors(req: Request, res: Response, simulation: typeof simulati
     res.status(403).json({ error: "Origin is not allowed for this simulation." });
     return false;
   }
-  if (origin) {
+  if (origin && allowedOrigins.length > 0 && !allowedOrigins.includes("*")) {
     res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Access-Control-Expose-Headers", "content-type, set-cookie, x-simulator-rule");
+    res.setHeader("Vary", "Origin");
+  } else if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
   }
+  if (origin) res.setHeader("Access-Control-Expose-Headers", "content-type, set-cookie, x-simulator-rule");
   return true;
 }
 
