@@ -60,6 +60,8 @@ export const simulationsTable = pgTable("simulations", {
   forwardRequest: boolean("forward_request").notNull().default(false),
   forwardTimeoutMs: integer("forward_timeout_ms").notNull().default(10000),
   preserveHeaders: boolean("preserve_headers").notNull().default(true),
+  executionToken: text("execution_token"),
+  allowedOrigins: jsonb("allowed_origins").$type<string[]>().notNull().default([]),
   enabled: boolean("enabled").notNull().default(true),
   requestCount: integer("request_count").notNull().default(0),
   failedCount: integer("failed_count").notNull().default(0),

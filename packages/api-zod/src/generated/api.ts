@@ -102,6 +102,8 @@ export const ListSimulationsResponseItem = zod.object({
   "forwardRequest": zod.boolean(),
   "forwardTimeoutMs": zod.number().int().min(listSimulationsResponseForwardTimeoutMsMin),
   "preserveHeaders": zod.boolean(),
+  "executionToken": zod.string().nullish(),
+  "allowedOrigins": zod.array(zod.string()),
   "enabled": zod.boolean(),
   "requestCount": zod.number().int().min(listSimulationsResponseRequestCountMin),
   "failedCount": zod.number().int().min(listSimulationsResponseFailedCountMin),
@@ -162,6 +164,7 @@ export const CreateSimulationBody = zod.object({
   "forwardRequest": zod.boolean().optional(),
   "forwardTimeoutMs": zod.number().int().min(createSimulationBodyForwardTimeoutMsMin).max(createSimulationBodyForwardTimeoutMsMax).optional(),
   "preserveHeaders": zod.boolean().optional(),
+  "allowedOrigins": zod.array(zod.string()).optional(),
   "enabled": zod.boolean().optional()
 })
 
@@ -210,6 +213,8 @@ export const CreateSimulationResponse = zod.object({
   "forwardRequest": zod.boolean(),
   "forwardTimeoutMs": zod.number().int().min(createSimulationResponseForwardTimeoutMsMin),
   "preserveHeaders": zod.boolean(),
+  "executionToken": zod.string().nullish(),
+  "allowedOrigins": zod.array(zod.string()),
   "enabled": zod.boolean(),
   "requestCount": zod.number().int().min(createSimulationResponseRequestCountMin),
   "failedCount": zod.number().int().min(createSimulationResponseFailedCountMin),
@@ -278,6 +283,8 @@ export const GetSimulationResponse = zod.object({
   "forwardRequest": zod.boolean(),
   "forwardTimeoutMs": zod.number().int().min(getSimulationResponseOneForwardTimeoutMsMin),
   "preserveHeaders": zod.boolean(),
+  "executionToken": zod.string().nullish(),
+  "allowedOrigins": zod.array(zod.string()),
   "enabled": zod.boolean(),
   "requestCount": zod.number().int().min(getSimulationResponseOneRequestCountMin),
   "failedCount": zod.number().int().min(getSimulationResponseOneFailedCountMin),
@@ -366,6 +373,7 @@ export const UpdateSimulationBody = zod.object({
   "forwardRequest": zod.boolean().optional(),
   "forwardTimeoutMs": zod.number().int().min(updateSimulationBodyForwardTimeoutMsMin).max(updateSimulationBodyForwardTimeoutMsMax).optional(),
   "preserveHeaders": zod.boolean().optional(),
+  "allowedOrigins": zod.array(zod.string()).optional(),
   "enabled": zod.boolean().optional()
 })
 
@@ -414,6 +422,8 @@ export const UpdateSimulationResponse = zod.object({
   "forwardRequest": zod.boolean(),
   "forwardTimeoutMs": zod.number().int().min(updateSimulationResponseForwardTimeoutMsMin),
   "preserveHeaders": zod.boolean(),
+  "executionToken": zod.string().nullish(),
+  "allowedOrigins": zod.array(zod.string()),
   "enabled": zod.boolean(),
   "requestCount": zod.number().int().min(updateSimulationResponseRequestCountMin),
   "failedCount": zod.number().int().min(updateSimulationResponseFailedCountMin),

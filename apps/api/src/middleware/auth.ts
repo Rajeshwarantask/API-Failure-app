@@ -8,6 +8,11 @@ const supabaseJwks = process.env.SUPABASE_URL
 export type AuthenticatedRequest = Request & { userId: string; userEmail?: string; userName?: string };
 
 export async function requireAuth(request: AuthenticatedRequest, response: Response, next: NextFunction) {
+  if (request.path.startsWith("/proxy/simulations/")) {
+    next();
+    return;
+  }
+
   const header = request.header("authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
   const secret = process.env.SUPABASE_JWT_SECRET;
