@@ -1,9 +1,11 @@
 // The API and database packages resolve separate Drizzle type copies during Vercel's workspace check.
 // Runtime behavior is unchanged; the API package owns the validated query boundary.
 // @ts-nocheck
+import { randomBytes } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { Router, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
-import { db, executionsTable, simulationsTable } from "@workspace/db";
+import { db, executionsTable, integrationCredentialsTable, simulationsTable } from "@workspace/db";
 import { canAccessTeam, ensureUser, getAccessibleSimulation, requireUserId, simulationAccess } from "../lib/workspace.js";
 import type { AuthenticatedRequest } from "../middleware/auth.js";
 import {
@@ -73,11 +75,69 @@ function endpointFor(id: number): string {
   return `/api/proxy/simulations/${id}`;
 }
 
+function createExecutionToken(): string {
+  return `ft_live_${randomBytes(32).toString("base64url")}`;
+}
+
+function clientIp(req: Request): string | null {
+  const forwarded = req.header("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || req.socket.remoteAddress || null;
+}
+
+function credentialSummary(credential: typeof integrationCredentialsTable.$inferSelect | undefined) {
+  if (!credential || credential.revokedAt) return null;
+  return { id: credential.id, keyPrefix: credential.keyPrefix, createdAt: credential.createdAt, expiresAt: credential.expiresAt, revokedAt: credential.revokedAt, lastUsedAt: credential.lastUsedAt, lastUsedIp: credential.lastUsedIp };
+}
+
+function tokenFromRequest(req: Request): string | null {
+  const header = req.header("x-faultline-token") ?? req.header("x-execution-token");
+  if (header) return header.trim();
+  const authorization = req.header("authorization");
+  return authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : null;
+}
+
+function originAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
+  if (!origin || allowedOrigins.length === 0) return true;
+  return allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+}
+
+function applyProxyCors(req: Request, res: Response, simulation: typeof simulationsTable.$inferSelect): boolean {
+  const origin = req.header("origin");
+  const allowedOrigins = Array.isArray(simulation.allowedOrigins) ? simulation.allowedOrigins : [];
+  if (!originAllowed(origin, allowedOrigins)) {
+    res.status(403).json({ error: "Origin is not allowed for this simulation." });
+    return false;
+  }
+  if (origin && allowedOrigins.length > 0 && !allowedOrigins.includes("*")) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+  } else if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  if (origin) res.setHeader("Access-Control-Expose-Headers", "content-type, set-cookie, x-simulator-rule");
+  return true;
+}
+
 function mapSimulation(simulation: typeof simulationsTable.$inferSelect) {
   return {
     ...simulation,
     endpoint: endpointFor(simulation.id),
   };
+}
+
+function defaultFailureBody(type: FailureType): string {
+  const bodies: Record<string, unknown> = {
+    http_400: { error: "bad_request", message: "Invalid request" },
+    http_401: { error: "unauthorized", message: "Authentication required" },
+    http_403: { error: "forbidden", message: "Access denied" },
+    http_404: { error: "not_found", message: "Resource not found" },
+    http_429: { error: "rate_limit_exceeded", message: "Too many requests", retry_after: 60 },
+    http_500: { error: "internal_server_error", message: "An unexpected error occurred" },
+    http_502: { error: "bad_gateway", message: "Upstream service unavailable" },
+    http_503: { error: "service_unavailable", message: "Service temporarily unavailable" },
+  };
+  return JSON.stringify(bodies[type] ?? { error: type, status: failureStatuses[type] ?? 500 });
 }
 
 function createTimeline(type: FailureType, baseTime: Date) {
@@ -120,6 +180,8 @@ async function seedIfEmpty(userId: string, email?: string): Promise<void> {
       forwardRequest: true,
       forwardTimeoutMs: 3500,
       preserveHeaders: true,
+      executionToken: null,
+      allowedOrigins: [],
       enabled: true,
       requestCount: 48,
       failedCount: 37,
@@ -144,6 +206,8 @@ async function seedIfEmpty(userId: string, email?: string): Promise<void> {
       forwardRequest: false,
       forwardTimeoutMs: 3000,
       preserveHeaders: true,
+      executionToken: null,
+      allowedOrigins: [],
       enabled: true,
       requestCount: 19,
       failedCount: 13,
@@ -226,6 +290,10 @@ type RequestOverrides = {
   headers?: Record<string, string>;
   queryParams?: Record<string, string>;
   requestBody?: string | null;
+  pathSuffix?: string;
+  source?: "dashboard" | "external";
+  tokenAuthenticated?: boolean;
+  requestIp?: string | null;
 };
 
 async function executeSimulation(
@@ -238,8 +306,14 @@ async function executeSimulation(
   const requestHeaders = requestOverrides.headers ?? simulation.headers;
   const requestQuery = requestOverrides.queryParams ?? simulation.queryParams;
   const requestBody = requestOverrides.requestBody === undefined ? simulation.requestBody : requestOverrides.requestBody;
+  const baseUrl = new URL(simulation.targetUrl);
+  if (requestOverrides.pathSuffix) {
+    const suffix = requestOverrides.pathSuffix.startsWith("/") ? requestOverrides.pathSuffix : `/${requestOverrides.pathSuffix}`;
+    baseUrl.pathname = `${baseUrl.pathname.replace(/\/$/, "")}${suffix}`;
+  }
+  const effectiveTargetUrl = baseUrl.toString();
   const request = { method, headers: requestHeaders, queryParams: requestQuery, requestBody };
-  const conditionsMatch = matchesConditions(simulation.conditions as Conditions, request, simulation.targetUrl);
+  const conditionsMatch = matchesConditions(simulation.conditions as Conditions, request, effectiveTargetUrl);
   const workflow = overrides.workflow ?? simulation.workflow ?? [];
   const workflowStep = workflow.length > 0 ? workflow.find((step) => (step.attempts ?? 1) > 0) : undefined;
   const configuredFailure = (workflowStep?.failureType ?? overrides.failureType ?? (simulation.enabled && conditionsMatch ? simulation.failureType : "none")) as FailureType;
@@ -251,8 +325,8 @@ async function executeSimulation(
   const isTimeout = failureType === "timeout";
   const isFailure = failureType !== "none" && failureType !== "latency";
   const configuredLatency = Math.max(0, overrides.latencyMs ?? simulation.latencyMs ?? 0);
-  const responseBody = overrides.responseBody !== undefined ? overrides.responseBody : failureType === "empty_response" ? "" : failureType === "malformed_json" ? '{"error":"unterminated"' : failureType === "none" || failureType === "latency" ? null : simulation.responseBody ?? JSON.stringify({ error: failureType, status: statusCode }, null, 2);
-  let responseHeaders: Record<string, string> = { "content-type": "application/json" };
+  const responseBody = overrides.responseBody !== undefined ? overrides.responseBody : failureType === "empty_response" ? "" : failureType === "malformed_json" ? '{"error":"unterminated"' : failureType === "none" || failureType === "latency" ? null : simulation.responseBody ?? defaultFailureBody(failureType);
+  let responseHeaders: Record<string, string | string[]> = { "content-type": "application/json" };
   let actualLatencyMs = 0;
   let status: "success" | "failure" | "timeout" = isTimeout ? "timeout" : isFailure ? "failure" : "success";
   let finalStatus = statusCode;
@@ -284,11 +358,15 @@ async function executeSimulation(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
       try {
-        const upstream = await fetch(buildUrl(simulation.targetUrl, requestQuery), { method, headers: requestHeaders, body: ["GET", "HEAD"].includes(method) ? undefined : requestBody ?? undefined, signal: controller.signal });
+        const upstream = await fetch(buildUrl(effectiveTargetUrl, requestQuery), { method, headers: requestHeaders, body: ["GET", "HEAD"].includes(method) ? undefined : requestBody ?? undefined, signal: controller.signal });
         finalStatus = upstream.status;
         finalBody = await upstream.text();
         responseHeaders = {};
-        upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders) responseHeaders[key] = value; });
+        upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders && key !== "set-cookie") responseHeaders[key] = value; });
+        const upstreamCookies = typeof (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
+          ? (upstream.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
+          : [];
+        if (simulation.preserveHeaders && upstreamCookies.length > 0) responseHeaders["set-cookie"] = upstreamCookies;
         status = upstream.ok ? "success" : "failure";
       } catch (error) {
         status = error instanceof Error && error.name === "AbortError" ? "timeout" : "failure";
@@ -306,9 +384,9 @@ async function executeSimulation(
   }
 
   const [execution] = await db.insert(executionsTable).values({
-    ownerId: simulation.ownerId, teamId: simulation.teamId, simulationId: simulation.id, method, url: buildUrl(simulation.targetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
+    ownerId: simulation.ownerId, teamId: simulation.teamId, simulationId: simulation.id, method, url: buildUrl(effectiveTargetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
     failureType, simulatedStatus: finalStatus, responseHeaders: simulation.preserveHeaders ? { ...responseHeaders, "x-simulator-rule": failureType } : {}, responseBody: finalBody,
-    actualLatencyMs, status, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
+    actualLatencyMs, status, source: requestOverrides.source ?? "dashboard", tokenAuthenticated: requestOverrides.tokenAuthenticated ?? false, requestIp: requestOverrides.requestIp ?? null, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
   }).returning();
   await db.update(simulationsTable).set({ requestCount: simulation.requestCount + 1, failedCount: simulation.failedCount + (isFailure || status === "timeout" ? 1 : 0), successCount: simulation.successCount + (isFailure || status === "timeout" ? 0 : 1), lastExecutedAt: startedAt, updatedAt: startedAt }).where((eq as any)(simulationsTable.id, simulation.id));
   return execution;
@@ -380,6 +458,8 @@ router.post("/simulations", async (req: AuthenticatedRequest, res): Promise<void
       forwardRequest: data.forwardRequest ?? false,
       forwardTimeoutMs: data.forwardTimeoutMs ?? 10000,
       preserveHeaders: data.preserveHeaders ?? true,
+      executionToken: null,
+      allowedOrigins: data.allowedOrigins ?? [],
       enabled: data.enabled ?? true,
     })
     .returning();
@@ -404,6 +484,45 @@ router.get("/simulations/:id", async (req, res): Promise<void> => {
     .orderBy((desc as any)(executionsTable.createdAt))
     .limit(20);
   res.json(GetSimulationResponse.parse({ ...mapSimulation(simulation), executions }));
+});
+
+async function findCredential(simulationId: number) {
+  const [credential] = await db.select().from(integrationCredentialsTable).where(eq(integrationCredentialsTable.simulationId, simulationId)).orderBy(desc(integrationCredentialsTable.createdAt)).limit(1);
+  return credential;
+}
+
+router.get("/simulations/:id/integration", async (req, res): Promise<void> => {
+  const simulation = await getSimulation(requireUserId(req), Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  res.json({ credential: credentialSummary(await findCredential(simulation.id)), allowedOrigins: simulation.allowedOrigins ?? [] });
+});
+
+router.post("/simulations/:id/integration/token", async (req, res): Promise<void> => {
+  const ownerId = requireUserId(req);
+  const simulation = await getSimulation(ownerId, Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  const token = createExecutionToken();
+  await db.update(integrationCredentialsTable).set({ revokedAt: now() }).where(and(eq(integrationCredentialsTable.simulationId, simulation.id), eq(integrationCredentialsTable.ownerId, ownerId), eq(integrationCredentialsTable.revokedAt, null)));
+  const [credential] = await db.insert(integrationCredentialsTable).values({ simulationId: simulation.id, ownerId, keyPrefix: token.slice(0, 12), keyHash: await bcrypt.hash(token, 12), expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) }).returning();
+  res.status(201).json({ token, credential: credentialSummary(credential) });
+});
+
+router.post("/simulations/:id/integration/token/regenerate", async (req, res): Promise<void> => {
+  const ownerId = requireUserId(req);
+  const simulation = await getSimulation(ownerId, Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  const token = createExecutionToken();
+  await db.update(integrationCredentialsTable).set({ revokedAt: now() }).where(and(eq(integrationCredentialsTable.simulationId, simulation.id), eq(integrationCredentialsTable.ownerId, ownerId), eq(integrationCredentialsTable.revokedAt, null)));
+  const [credential] = await db.insert(integrationCredentialsTable).values({ simulationId: simulation.id, ownerId, keyPrefix: token.slice(0, 12), keyHash: await bcrypt.hash(token, 12), expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) }).returning();
+  res.status(201).json({ token, credential: credentialSummary(credential) });
+});
+
+router.post("/simulations/:id/integration/token/revoke", async (req, res): Promise<void> => {
+  const ownerId = requireUserId(req);
+  const simulation = await getSimulation(ownerId, Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  await db.update(integrationCredentialsTable).set({ revokedAt: now() }).where(and(eq(integrationCredentialsTable.simulationId, simulation.id), eq(integrationCredentialsTable.ownerId, ownerId), eq(integrationCredentialsTable.revokedAt, null)));
+  res.status(204).end();
 });
 
 router.patch("/simulations/:id", async (req, res): Promise<void> => {
@@ -565,16 +684,46 @@ router.post("/executions/:id/replay", async (req, res): Promise<void> => {
 });
 
 async function handleProxy(req: Request, res: import("express").Response): Promise<void> {
-  const id = parseId(req.params.id);
+  const id = parseId(req.params.id ?? req.params[0]);
   if (!id) {
     res.status(400).json({ error: "Invalid simulation id" });
     return;
   }
-  const simulation = await getSimulation(requireUserId(req), id);
+  const [simulation] = await db.select().from(simulationsTable).where(eq(simulationsTable.id, id)).limit(1);
   if (!simulation) {
     res.status(404).json({ error: "Simulation not found" });
     return;
   }
+  if (!applyProxyCors(req, res, simulation)) return;
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", req.header("access-control-request-headers") ?? "authorization, content-type, x-faultline-token");
+    res.status(204).end();
+    return;
+  }
+  const suppliedToken = tokenFromRequest(req);
+  if (!suppliedToken) {
+    res.status(401).json({ error: "Integration token required" });
+    return;
+  }
+  const credential = await findCredential(simulation.id);
+  if (!credential) {
+    res.status(401).json({ error: "Invalid integration token" });
+    return;
+  }
+  if (credential.revokedAt) {
+    res.status(401).json({ error: "Integration token has been revoked" });
+    return;
+  }
+  if (credential.expiresAt.getTime() <= Date.now()) {
+    res.status(401).json({ error: "Integration token has expired" });
+    return;
+  }
+  if (!(await bcrypt.compare(suppliedToken, credential.keyHash))) {
+    res.status(401).json({ error: "Invalid integration token" });
+    return;
+  }
+  await db.update(integrationCredentialsTable).set({ lastUsedAt: now(), lastUsedIp: clientIp(req) }).where(eq(integrationCredentialsTable.id, credential.id));
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.headers)) {
     if (typeof value === "string" && key !== "host") headers[key] = value;
@@ -583,20 +732,30 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
   for (const [key, value] of Object.entries(req.query)) {
     if (typeof value === "string") queryParams[key] = value;
   }
+  const suffix = typeof req.params[1] === "string" ? req.params[1] : "";
   const body = req.body && typeof req.body === "object" ? JSON.stringify(req.body) : typeof req.body === "string" ? req.body : null;
   const execution = await executeSimulation(simulation, {}, {
     method: ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(req.method) ? (req.method as HttpMethod) : "POST",
     headers,
     queryParams,
     requestBody: body,
+    pathSuffix: suffix,
+    source: "external",
+    tokenAuthenticated: true,
+    requestIp: clientIp(req),
   });
   if (execution.status === "timeout" || execution.failureType === "connection_failure") {
     res.destroy();
     return;
   }
-  res.status(execution.simulatedStatus ?? 200).set(execution.responseHeaders).send(execution.responseBody ?? "");
+  const responseHeaders = execution.responseHeaders as Record<string, string | string[]>;
+  const setCookie = responseHeaders["set-cookie"];
+  delete responseHeaders["set-cookie"];
+  res.status(execution.simulatedStatus ?? 200).set(responseHeaders as Record<string, string>);
+  if (setCookie) res.setHeader("set-cookie", setCookie);
+  res.send(execution.responseBody ?? "");
 }
 
-router.all("/proxy/simulations/:id", handleProxy);
+router.all(/^\/proxy\/simulations\/(\\d+)(\/.*)?$/, handleProxy);
 
 export default router;

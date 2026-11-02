@@ -6,8 +6,13 @@ FaultLine is a developer-focused API failure simulation and debugging workspace.
 
 ## Demo
 
-<img width="800" height="355" alt="ezgif com-cut" src="https://github.com/user-attachments/assets/1c4c69e2-d04c-40f7-a19a-bd9cfff9a712" />
+<!-- Paste the working product video GIF below this comment. Recommended: keep the GIF under 10 MB and use a relative path such as `docs/demo.gif`. -->
 
+<!--
+![FaultLine demo](docs/demo.gif)
+-->
+
+_Add the working product video GIF here._
 
 ## Why FaultLine
 

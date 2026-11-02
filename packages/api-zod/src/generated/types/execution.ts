@@ -21,7 +21,10 @@ export interface Execution {
   /** @nullable */
   requestBody?: string | null;
   failureType: FailureType;
+  source: 'dashboard' | 'external';
+  tokenAuthenticated: boolean;
   /** @nullable */
+  requestIp?: string | null;
   simulatedStatus?: number | null;
   responseHeaders: KeyValueMap;
   /** @nullable */
