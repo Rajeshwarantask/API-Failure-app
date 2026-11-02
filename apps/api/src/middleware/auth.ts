@@ -7,30 +7,39 @@ const supabaseJwks = process.env.SUPABASE_URL
 
 export type AuthenticatedRequest = Request & { userId: string; userEmail?: string; userName?: string };
 
-export async function requireAuth(request: AuthenticatedRequest, response: Response, next: NextFunction) {
-  if (request.path.startsWith("/proxy/simulations/")) {
-    next();
-    return;
-  }
-
-  const header = request.header("authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+async function attachUser(request: AuthenticatedRequest, token: string): Promise<boolean> {
   const secret = process.env.SUPABASE_JWT_SECRET;
-  if (!token || (!secret && !supabaseJwks)) return response.status(401).json({ message: "Authentication required." });
+  if (!secret && !supabaseJwks) return false;
   try {
     const { alg } = decodeProtectedHeader(token);
     const key = alg === "HS256" && secret ? new TextEncoder().encode(secret) : supabaseJwks;
-    if (!key) return response.status(401).json({ message: "Authentication configuration is incomplete." });
+    if (!key) return false;
     const { payload } = await jwtVerify(token, key, { algorithms: alg === "HS256" ? ["HS256"] : ["ES256", "RS256"] });
-    if (typeof payload.sub !== "string") return response.status(401).json({ message: "Invalid authentication token." });
+    if (typeof payload.sub !== "string") return false;
     request.userId = payload.sub;
     request.userEmail = typeof payload.email === "string" ? payload.email : undefined;
     const metadata = payload.user_metadata;
     request.userName = metadata && typeof metadata === "object" && typeof (metadata as Record<string, unknown>).display_name === "string"
       ? (metadata as Record<string, unknown>).display_name as string
       : undefined;
-    return next();
+    return true;
   } catch {
-    return response.status(401).json({ message: "Invalid or expired authentication token." });
+    return false;
   }
+}
+
+export async function requireAuth(request: AuthenticatedRequest, response: Response, next: NextFunction) {
+  const header = request.header("authorization");
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+
+  // Proxy requests accept either a valid dashboard session or a FaultLine integration token.
+  // Invalid bearer values fall through so the proxy can return its precise token error.
+  if (request.path.startsWith("/proxy/simulations/")) {
+    if (token) await attachUser(request, token);
+    next();
+    return;
+  }
+
+  if (!token || !(await attachUser(request, token))) return response.status(401).json({ message: "Invalid or expired authentication token." });
+  return next();
 }

@@ -104,11 +104,8 @@ function originAllowed(origin: string | undefined, allowedOrigins: string[]): bo
 function applyProxyCors(req: Request, res: Response, simulation: typeof simulationsTable.$inferSelect): boolean {
   const origin = req.header("origin");
   const allowedOrigins = Array.isArray(simulation.allowedOrigins) ? simulation.allowedOrigins : [];
-  if (!originAllowed(origin, allowedOrigins)) {
-    res.status(403).json({ error: "Origin is not allowed for this simulation." });
-    return false;
-  }
-  if (origin && allowedOrigins.length > 0 && !allowedOrigins.includes("*")) {
+  const isRegisteredOrigin = Boolean(origin && allowedOrigins.length > 0 && allowedOrigins.includes(origin));
+  if (origin && isRegisteredOrigin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
@@ -362,7 +359,7 @@ async function executeSimulation(
         finalStatus = upstream.status;
         finalBody = await upstream.text();
         responseHeaders = {};
-        upstream.headers.forEach((value, key) => { if (simulation.preserveHeaders && key !== "set-cookie") responseHeaders[key] = value; });
+        upstream.headers.forEach((value, key) => { if (key !== "set-cookie" && (simulation.preserveHeaders || key === "content-type")) responseHeaders[key] = value; });
         const upstreamCookies = typeof (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
           ? (upstream.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
           : [];
@@ -385,7 +382,7 @@ async function executeSimulation(
 
   const [execution] = await db.insert(executionsTable).values({
     ownerId: simulation.ownerId, teamId: simulation.teamId, simulationId: simulation.id, method, url: buildUrl(effectiveTargetUrl, requestQuery), requestHeaders, requestQuery, requestBody,
-    failureType, simulatedStatus: finalStatus, responseHeaders: simulation.preserveHeaders ? { ...responseHeaders, "x-simulator-rule": failureType } : {}, responseBody: finalBody,
+    failureType, simulatedStatus: finalStatus, responseHeaders: { ...responseHeaders, "x-simulator-rule": failureType }, responseBody: finalBody,
     actualLatencyMs, status, source: requestOverrides.source ?? "dashboard", tokenAuthenticated: requestOverrides.tokenAuthenticated ?? false, requestIp: requestOverrides.requestIp ?? null, timeline: createTimeline(failureType, startedAt), createdAt: startedAt,
   }).returning();
   await db.update(simulationsTable).set({ requestCount: simulation.requestCount + 1, failedCount: simulation.failedCount + (isFailure || status === "timeout" ? 1 : 0), successCount: simulation.successCount + (isFailure || status === "timeout" ? 0 : 1), lastExecutedAt: startedAt, updatedAt: startedAt }).where((eq as any)(simulationsTable.id, simulation.id));
@@ -495,6 +492,15 @@ router.get("/simulations/:id/integration", async (req, res): Promise<void> => {
   const simulation = await getSimulation(requireUserId(req), Number(req.params.id));
   if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
   res.json({ credential: credentialSummary(await findCredential(simulation.id)), allowedOrigins: simulation.allowedOrigins ?? [] });
+});
+
+router.put("/simulations/:id/integration/origins", async (req, res): Promise<void> => {
+  const ownerId = requireUserId(req);
+  const simulation = await getSimulation(ownerId, Number(req.params.id));
+  if (!simulation) { res.status(404).json({ error: "Simulation not found" }); return; }
+  const origins = Array.isArray(req.body?.origins) ? [...new Set(req.body.origins.map((origin: unknown) => String(origin).trim()).filter(Boolean))] : [];
+  await db.update(simulationsTable).set({ allowedOrigins: origins, updatedAt: now() }).where(and(eq(simulationsTable.id, simulation.id), eq(simulationsTable.ownerId, ownerId)));
+  res.json({ allowedOrigins: origins });
 });
 
 router.post("/simulations/:id/integration/token", async (req, res): Promise<void> => {
@@ -701,29 +707,32 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
     res.status(204).end();
     return;
   }
+  const dashboardSession = typeof (req as AuthenticatedRequest).userId === "string";
   const suppliedToken = tokenFromRequest(req);
-  if (!suppliedToken) {
-    res.status(401).json({ error: "Integration token required" });
-    return;
+  if (!dashboardSession) {
+    if (!suppliedToken) {
+      res.status(401).json({ error: "token_required", message: "Integration token required" });
+      return;
+    }
+    const credential = await findCredential(simulation.id);
+    if (!credential) {
+      res.status(401).json({ error: "invalid_token", message: "Invalid integration token" });
+      return;
+    }
+    if (credential.revokedAt) {
+      res.status(401).json({ error: "token_revoked", message: "Integration token has been revoked" });
+      return;
+    }
+    if (credential.expiresAt.getTime() <= Date.now()) {
+      res.status(401).json({ error: "token_expired", message: "Integration token has expired" });
+      return;
+    }
+    if (!(await bcrypt.compare(suppliedToken, credential.keyHash))) {
+      res.status(401).json({ error: "invalid_token", message: "Invalid integration token" });
+      return;
+    }
+    await db.update(integrationCredentialsTable).set({ lastUsedAt: now(), lastUsedIp: clientIp(req) }).where(eq(integrationCredentialsTable.id, credential.id));
   }
-  const credential = await findCredential(simulation.id);
-  if (!credential) {
-    res.status(401).json({ error: "Invalid integration token" });
-    return;
-  }
-  if (credential.revokedAt) {
-    res.status(401).json({ error: "Integration token has been revoked" });
-    return;
-  }
-  if (credential.expiresAt.getTime() <= Date.now()) {
-    res.status(401).json({ error: "Integration token has expired" });
-    return;
-  }
-  if (!(await bcrypt.compare(suppliedToken, credential.keyHash))) {
-    res.status(401).json({ error: "Invalid integration token" });
-    return;
-  }
-  await db.update(integrationCredentialsTable).set({ lastUsedAt: now(), lastUsedIp: clientIp(req) }).where(eq(integrationCredentialsTable.id, credential.id));
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.headers)) {
     if (typeof value === "string" && key !== "host") headers[key] = value;
@@ -740,8 +749,8 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
     queryParams,
     requestBody: body,
     pathSuffix: suffix,
-    source: "external",
-    tokenAuthenticated: true,
+    source: dashboardSession ? "dashboard" : "external",
+    tokenAuthenticated: !dashboardSession,
     requestIp: clientIp(req),
   });
   if (execution.status === "timeout" || execution.failureType === "connection_failure") {
