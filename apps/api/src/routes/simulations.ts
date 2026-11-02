@@ -101,18 +101,27 @@ function originAllowed(origin: string | undefined, allowedOrigins: string[]): bo
   return allowedOrigins.includes("*") || allowedOrigins.includes(origin);
 }
 
+const proxyMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+const proxyHeaders = "Content-Type, X-Faultline-Token";
+const developmentProxyOrigin = "http://localhost:5173";
+
 function applyProxyCors(req: Request, res: Response, simulation: typeof simulationsTable.$inferSelect): boolean {
   const origin = req.header("origin");
-  const allowedOrigins = Array.isArray(simulation.allowedOrigins) ? simulation.allowedOrigins : [];
-  const isRegisteredOrigin = Boolean(origin && allowedOrigins.length > 0 && allowedOrigins.includes(origin));
-  if (origin && isRegisteredOrigin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Vary", "Origin");
-  } else if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+  if (!origin) return true;
+
+  const configuredOrigins = Array.isArray(simulation.allowedOrigins) ? simulation.allowedOrigins : [];
+  const allowedOrigins = new Set([developmentProxyOrigin, ...configuredOrigins.filter((value) => value !== "*")]);
+  if (!allowedOrigins.has(origin)) {
+    res.status(403).json({ error: "cors_origin_not_allowed" });
+    return false;
   }
-  if (origin) res.setHeader("Access-Control-Expose-Headers", "content-type, set-cookie, x-simulator-rule");
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", proxyMethods);
+  res.setHeader("Access-Control-Allow-Headers", proxyHeaders);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Expose-Headers", "content-type, x-simulator-rule");
   return true;
 }
 
@@ -702,8 +711,18 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
   }
   if (!applyProxyCors(req, res, simulation)) return;
   if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", req.header("access-control-request-headers") ?? "authorization, content-type, x-faultline-token");
+    const requestedMethod = req.header("access-control-request-method");
+    const requestedHeaders = (req.header("access-control-request-headers") ?? "")
+      .split(",")
+      .map((header) => header.trim().toLowerCase())
+      .filter(Boolean);
+    const allowedHeaderNames = new Set(["content-type", "x-faultline-token"]);
+    const methodAllowed = !requestedMethod || proxyMethods.split(", ").includes(requestedMethod.toUpperCase());
+    const headersAllowed = requestedHeaders.every((header) => allowedHeaderNames.has(header));
+    if (!methodAllowed || !headersAllowed) {
+      res.status(405).json({ error: "cors_preflight_not_allowed" });
+      return;
+    }
     res.status(204).end();
     return;
   }
@@ -759,12 +778,14 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
   }
   const responseHeaders = execution.responseHeaders as Record<string, string | string[]>;
   const setCookie = responseHeaders["set-cookie"];
-  delete responseHeaders["set-cookie"];
-  res.status(execution.simulatedStatus ?? 200).set(responseHeaders as Record<string, string>);
+  res.status(execution.simulatedStatus ?? 200);
+  for (const [key, value] of Object.entries(responseHeaders)) {
+    if (key !== "set-cookie") res.setHeader(key, value);
+  }
   if (setCookie) res.setHeader("set-cookie", setCookie);
   res.send(execution.responseBody ?? "");
 }
 
-router.all(/^\/proxy\/simulations\/(\\d+)(\/.*)?$/, handleProxy);
+router.all(/^\/proxy\/simulations\/(\d+)(\/.*)?$/, handleProxy);
 
 export default router;
