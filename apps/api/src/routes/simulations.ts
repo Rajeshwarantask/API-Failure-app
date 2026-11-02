@@ -92,8 +92,7 @@ function credentialSummary(credential: typeof integrationCredentialsTable.$infer
 function tokenFromRequest(req: Request): string | null {
   const header = req.header("x-faultline-token") ?? req.header("x-execution-token");
   if (header) return header.trim();
-  const authorization = req.header("authorization");
-  return authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : null;
+  return null;
 }
 
 function originAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
@@ -272,7 +271,11 @@ type Conditions = {
 function matchesConditions(conditions: Conditions | null | undefined, request: RequestOverrides, targetUrl: string): boolean {
   if (!conditions || Object.keys(conditions).length === 0) return true;
   if (conditions.method && conditions.method.toUpperCase() !== request.method) return false;
-  if (conditions.path && !new URL(targetUrl).pathname.includes(conditions.path)) return false;
+  if (conditions.path) {
+    const configuredPath = conditions.path.trim().replace(/\/$/, "") || "/";
+    const requestPath = new URL(targetUrl).pathname.replace(/\/$/, "") || "/";
+    if (requestPath !== configuredPath) return false;
+  }
   for (const [key, value] of Object.entries(conditions.headers ?? {})) {
     if ((request.headers ?? {})[key.toLowerCase()] !== value && (request.headers ?? {})[key] !== value) return false;
   }
@@ -360,7 +363,8 @@ async function executeSimulation(
   } else {
     if (configuredLatency > 0) await new Promise(resolve => setTimeout(resolve, configuredLatency));
 
-    if ((failureType === "none" || failureType === "latency") && simulation.forwardRequest) {
+    const shouldForward = simulation.forwardRequest || requestOverrides.source === "external";
+    if ((failureType === "none" || failureType === "latency") && shouldForward) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), Math.max(0, simulation.forwardTimeoutMs ?? 10000));
       try {
@@ -754,7 +758,7 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
   }
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.headers)) {
-    if (typeof value === "string" && key !== "host") headers[key] = value;
+    if (typeof value === "string" && !["host", "x-faultline-token", "x-execution-token"].includes(key.toLowerCase())) headers[key] = value;
   }
   const queryParams: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.query)) {
@@ -778,7 +782,7 @@ async function handleProxy(req: Request, res: import("express").Response): Promi
   }
   const responseHeaders = execution.responseHeaders as Record<string, string | string[]>;
   const setCookie = responseHeaders["set-cookie"];
-  res.status(execution.simulatedStatus ?? 200);
+  res.status(execution.simulatedStatus ?? 502);
   for (const [key, value] of Object.entries(responseHeaders)) {
     if (key !== "set-cookie") res.setHeader(key, value);
   }
