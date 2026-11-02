@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, real, serial, text, timestamp, uuid, primaryKey } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, real, serial, text, timestamp, uuid, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -71,6 +71,19 @@ export const simulationsTable = pgTable("simulations", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+export const integrationCredentialsTable = pgTable("integration_credentials", {
+  id: serial("id").primaryKey(),
+  simulationId: integer("simulation_id").notNull().references(() => simulationsTable.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  keyPrefix: text("key_prefix").notNull(),
+  keyHash: text("key_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  lastUsedIp: text("last_used_ip"),
+}, (table) => ({ simulationIdIdx: index("integration_credentials_simulation_id_idx").on(table.simulationId), ownerIdIdx: index("integration_credentials_owner_id_idx").on(table.ownerId) }));
+
 export const executionsTable = pgTable("executions", {
   id: serial("id").primaryKey(),
   ownerId: uuid("owner_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
@@ -82,6 +95,8 @@ export const executionsTable = pgTable("executions", {
   requestQuery: jsonb("request_query").$type<Record<string, string>>().notNull().default({}),
   requestBody: text("request_body"),
   source: text("source").notNull().default("dashboard"),
+  tokenAuthenticated: boolean("token_authenticated").notNull().default(false),
+  requestIp: text("request_ip"),
   failureType: text("failure_type").notNull(),
   simulatedStatus: integer("simulated_status"),
   responseHeaders: jsonb("response_headers").$type<Record<string, string>>().notNull().default({}),
