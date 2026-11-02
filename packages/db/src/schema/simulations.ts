@@ -99,7 +99,7 @@ export const executionsTable = pgTable("executions", {
   requestIp: text("request_ip"),
   failureType: text("failure_type").notNull(),
   simulatedStatus: integer("simulated_status"),
-  responseHeaders: jsonb("response_headers").$type<Record<string, string>>().notNull().default({}),
+  responseHeaders: jsonb("response_headers").$type<Record<string, string | string[]>>().notNull().default({}),
   responseBody: text("response_body"),
   actualLatencyMs: integer("actual_latency_ms").notNull().default(0),
   status: text("status").notNull(),
